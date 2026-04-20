@@ -55,7 +55,7 @@ const Login = () => {
               />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-bold text-white tracking-wider uppercase">BLURA - SAGA FOR AP INTELLIGENCE</h1>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-bold text-white tracking-wider uppercase">BLURA SAGA</h1>
               <div className="flex items-center justify-center gap-2 mt-1.5 lg:mt-2">
                 <div className="h-px w-6 lg:w-8 bg-gradient-to-r from-transparent to-[hsl(43,96%,50%)]"></div>
                 <Shield className="h-3 w-3 lg:h-4 lg:w-4 text-[hsl(43,96%,50%)]" />
@@ -63,7 +63,7 @@ const Login = () => {
               </div>
             </div>
           </div>
-          <p className="text-[hsl(210,20%,75%)] text-xs sm:text-sm tracking-wide uppercase">Social Sentiment Analysis Tool</p>
+          <p className="text-[hsl(210,20%,75%)] text-xs sm:text-sm tracking-wide uppercase">Sentiment and Good Will Analysis</p>
         </div>
 
         {/* Login Card */}
@@ -128,7 +128,7 @@ const Login = () => {
 
         {/* Footer */}
         <div className="mt-4 lg:mt-6 text-center">
-          <p className="text-[hsl(210,20%,60%)] text-[10px] lg:text-xs">© 2026 BLURA - SAGA • Secure Connection</p>
+          <p className="text-[hsl(210,20%,60%)] text-[10px] lg:text-xs">© 2026 BLURA SAGA • Secure Connection</p>
         </div>
       </div>
     </div>
