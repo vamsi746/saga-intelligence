@@ -44,8 +44,8 @@ const grievanceSettingsSchema = new mongoose.Schema({
     enum: ['low', 'medium', 'high'],
     default: 'medium'
   },
-  // Sangrur AC round-robin pointer used when no AC keyword is detected
-  sangrur_ac_rr_index: {
+  // Mahabubnagar AC round-robin pointer used when no AC keyword is detected
+  mahabubnagar_ac_rr_index: {
     type: Number,
     default: 0
   },

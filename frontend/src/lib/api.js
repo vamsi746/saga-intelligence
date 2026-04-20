@@ -19,7 +19,7 @@ const getDefaultBackendUrl = () => {
 
   // If accessing specifically via the production IP directly
   if (hostname === '178.255.44.130' || hostname === '103.211.37.124') {
-    return `http://${hostname}:5000`;
+    return `http://${hostname}:8000`;
   }
 
   // Handle local development (localhost or 127.0.0.1)
@@ -31,7 +31,7 @@ const getDefaultBackendUrl = () => {
   if (isIP || port === '3000') {
     return hostname === 'localhost' || hostname === '127.0.0.1'
       ? `http://localhost:5000`
-      : `http://103.211.37.124:5000`;
+      : `http://103.211.37.124:8000`;
   }
 
   // Production (Vercel/HTTPS or Nginx Reverse Proxy) - use relative URL

@@ -1630,57 +1630,50 @@ const getMapGrievances = async (req, res) => {
         const { days = 30, scope = 'all' } = req.query;
         const since = new Date();
         since.setDate(since.getDate() - parseInt(days));
-        const sangrurScope = String(scope || '').toLowerCase() === 'sangrur';
+        const mahbubnagarScope = String(scope || '').toLowerCase() === 'mahabubnagar';
 
-        const sangrurAcKeywords = ['sangrur', 'sunam', 'dirba', 'lehra', 'bhadaur', 'barnala', 'mehal kalan', 'malerkotla'];
+        const mahbubnagarAcKeywords = ['mahabubnagar', 'mahbubnagar', 'kodangal', 'narayanpet', 'jadcherla', 'devarkadra', 'makthal', 'shadnagar'];
         const acAliasMap = {
-            'sunam': 'sunam',
-            'sunam (sc)': 'sunam',
-            'dirba': 'dirba',
-            'dirba (sc)': 'dirba',
-            'lehra': 'lehra',
-            'lehra (sc)': 'lehra',
-            'bhadaur': 'bhadaur',
-            'bhadaur (sc)': 'bhadaur',
-            'barnala': 'barnala',
-            'mehal kalan': 'mehal kalan',
-            'mehal kalan (sc)': 'mehal kalan',
-            'malerkotla': 'malerkotla'
+            'kodangal': 'kodangal',
+            'narayanpet': 'narayanpet',
+            'mahbubnagar': 'mahbubnagar',
+            'mahabubnagar': 'mahbubnagar',
+            'jadcherla': 'jadcherla',
+            'devarkadra': 'devarkadra',
+            'makthal': 'makthal',
+            'shadnagar': 'shadnagar'
         };
 
         // All location keywords to search for (same as frontend CITY_TO_AC + CITY_TO_DISTRICT keys)
         const allLocationKeywords = [
-            'sunam', 'dirba', 'lehra', 'bhadaur', 'barnala', 'mehal kalan', 'malerkotla',
-            'dhuri', 'moonak', 'ahmedgarh', 'bhawanigarh',
-            'chandigarh', 'amritsar', 'ludhiana', 'jalandhar', 'patiala', 'bathinda',
-            'mohali', 'sas nagar', 'sangrur', 'mansa', 'firozpur', 'ferozepur',
-            'hoshiarpur', 'kapurthala', 'moga', 'muktsar', 'sri muktsar sahib',
-            'faridkot', 'pathankot', 'gurdaspur', 'rupnagar', 'ropar', 'nawanshahr',
-            'shaheed bhagat singh nagar', 'fatehgarh sahib', 'khanna', 'rajpura',
-            'budhlada', 'sardulgarh', 'abohar', 'fazilka', 'tarn taran'
+            'kodangal', 'narayanpet', 'mahbubnagar', 'mahabubnagar', 'jadcherla', 'devarkadra', 'makthal', 'shadnagar',
+            'kosgi', 'bomraspet', 'doultabad', 'maddur', 'kalwakurthy',
+            'hyderabad', 'secunderabad', 'warangal', 'karimnagar', 'nizamabad', 'khammam',
+            'nalgonda', 'adilabad', 'rangareddy', 'medak', 'sangareddy', 'siddipet',
+            'vikarabad', 'suryapet', 'kamareddy', 'jagtial', 'peddapalli', 'mancherial',
+            'nirmal', 'wanaparthy', 'nagarkurnool', 'jangaon', 'mahabubabad', 'medchal',
+            'sircilla', 'telangana', 'kaleshwaram', 'telangana state'
         ];
-        const locationKeywords = sangrurScope ? sangrurAcKeywords : allLocationKeywords;
+        const locationKeywords = mahbubnagarScope ? mahbubnagarAcKeywords : allLocationKeywords;
 
         // Use only detected/tagged location fields (no text/keyword fallback).
         const results = {};
 
-        const baseMatch = sangrurScope
+        // For Mahabubnagar scope: match any grievance that has a Mahabubnagar AC constituency
+        // (Hyderabad/Telangana grievances now get constituency assigned at ingestion via round-robin)
+        const baseMatch = mahbubnagarScope
             ? {
                 is_active: true,
                 post_date: { $gte: since },
-                $or: [
-                    { 'detected_location.city': /sangrur/i },
-                    { 'detected_location.district': /sangrur/i },
-                    { 'detected_location.constituency': /sangrur/i }
-                ]
+                'detected_location.constituency': { $exists: true, $nin: [null, ''] }
             }
             : {
                 is_active: true,
                 post_date: { $gte: since }
             };
 
-        // Strict Sangrur-only tagged aggregation (no keyword scanning).
-        if (sangrurScope) {
+        // Mahabubnagar AC-level aggregation — group by constituency
+        if (mahbubnagarScope) {
             const rows = await Grievance.aggregate([
                 { $match: baseMatch },
                 {
@@ -1690,6 +1683,12 @@ const getMapGrievances = async (req, res) => {
                                 $trim: { input: { $ifNull: ['$detected_location.constituency', ''] } }
                             }
                         }
+                    }
+                },
+                // Only include rows whose constituency maps to one of our ACs
+                {
+                    $match: {
+                        _constituency: { $in: Object.keys(acAliasMap) }
                     }
                 },
                 {
@@ -1733,18 +1732,18 @@ const getMapGrievances = async (req, res) => {
             ]);
 
             const results = {};
-            const sangrurTotal = { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] };
+            const mahbubnagarTotal = { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] };
 
             for (const row of rows) {
                 const catMap = {};
                 (row.categories || []).forEach((c) => { if (c) catMap[c] = (catMap[c] || 0) + 1; });
                 const rowCategories = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
 
-                sangrurTotal.count += row.count || 0;
-                sangrurTotal.positive += row.positive || 0;
-                sangrurTotal.negative += row.negative || 0;
-                sangrurTotal.neutral += row.neutral || 0;
-                sangrurTotal.categories = sangrurTotal.categories.concat(rowCategories);
+                mahbubnagarTotal.count += row.count || 0;
+                mahbubnagarTotal.positive += row.positive || 0;
+                mahbubnagarTotal.negative += row.negative || 0;
+                mahbubnagarTotal.neutral += row.neutral || 0;
+                mahbubnagarTotal.categories = mahbubnagarTotal.categories.concat(rowCategories);
 
                 const canonical = acAliasMap[row._id] || null;
                 if (!canonical) continue;
@@ -1766,13 +1765,13 @@ const getMapGrievances = async (req, res) => {
             });
 
             const totalCatMap = {};
-            (sangrurTotal.categories || []).forEach(([cat, cnt]) => { totalCatMap[cat] = (totalCatMap[cat] || 0) + cnt; });
-            results.sangrur = {
-                count: sangrurTotal.count,
-                total: sangrurTotal.count,
-                positive: sangrurTotal.positive,
-                negative: sangrurTotal.negative,
-                neutral: sangrurTotal.neutral,
+            (mahbubnagarTotal.categories || []).forEach(([cat, cnt]) => { totalCatMap[cat] = (totalCatMap[cat] || 0) + cnt; });
+            results.mahabubnagar = {
+                count: mahbubnagarTotal.count,
+                total: mahbubnagarTotal.count,
+                positive: mahbubnagarTotal.positive,
+                negative: mahbubnagarTotal.negative,
+                neutral: mahbubnagarTotal.neutral,
                 categories: Object.entries(totalCatMap).sort((a, b) => b[1] - a[1])
             };
 
@@ -1795,7 +1794,8 @@ const getMapGrievances = async (req, res) => {
                             $or: [
                                 { $regexMatch: { input: { $ifNull: ['$detected_location.city', ''] }, regex: boundaryPattern, options: 'i' } },
                                 { $regexMatch: { input: { $ifNull: ['$detected_location.district', ''] }, regex: boundaryPattern, options: 'i' } },
-                                { $regexMatch: { input: { $ifNull: ['$detected_location.constituency', ''] }, regex: boundaryPattern, options: 'i' } }
+                                { $regexMatch: { input: { $ifNull: ['$detected_location.constituency', ''] }, regex: boundaryPattern, options: 'i' } },
+                                { $regexMatch: { input: { $ifNull: ['$detected_location.keyword_matched', ''] }, regex: boundaryPattern, options: 'i' } }
                             ]
                         },
                         _mapHasDetectedLocation: {
@@ -1854,14 +1854,14 @@ const getMapGrievances = async (req, res) => {
                 }
             ]);
 
-            if (agg.length > 0 && agg[0].negative > 0) {
+            if (agg.length > 0 && agg[0].count > 0) {
                 const row = agg[0];
                 const catMap = {};
                 (row.categories || []).forEach(c => { if (c) catMap[c] = (catMap[c] || 0) + 1; });
                 const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
 
                 results[keyword] = {
-                    count: row.negative,
+                    count: row.count,
                     total: row.count,
                     positive: row.positive,
                     negative: row.negative,
@@ -1876,13 +1876,13 @@ const getMapGrievances = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-// Punjab location database — imported from dedicated module
-const { isPunjabLocation } = require('../config/punjabLocations');
+// Telangana location database — imported from dedicated module
+const { isTelanganaLocation } = require('../config/telanganaLocations');
 
 /**
  * Get unique detected locations with grievance counts.
  * Used by the frontend location filter dropdown.
- * Returns ONLY Punjab-related cities, districts and constituencies.
+ * Returns ONLY Telangana-related cities, districts and constituencies.
  */
 const getLocationStats = async (req, res) => {
     try {
@@ -1945,15 +1945,15 @@ const getLocationStats = async (req, res) => {
             ])
         ]);
 
-        // Filter to Punjab-only locations
-        const punjabCities = cityAgg.filter(c => isPunjabLocation(c.city) || isPunjabLocation(c.district));
-        const punjabDistricts = districtAgg.filter(d => isPunjabLocation(d.district));
-        const punjabConstituencies = constituencyAgg.filter(c => isPunjabLocation(c.constituency) || isPunjabLocation(c.district));
+        // Filter to Telangana-only locations
+        const telanganaCities = cityAgg.filter(c => isTelanganaLocation(c.city) || isTelanganaLocation(c.district));
+        const telanganaDistricts = districtAgg.filter(d => isTelanganaLocation(d.district));
+        const telanganaConstituencies = constituencyAgg.filter(c => isTelanganaLocation(c.constituency) || isTelanganaLocation(c.district));
 
         res.status(200).json({
-            cities: punjabCities.map(c => ({ city: c.city, count: c.count, district: c.district, constituency: c.constituency })),
-            districts: punjabDistricts.map(d => ({ district: d.district, count: d.count })),
-            constituencies: punjabConstituencies.map(c => ({ constituency: c.constituency, count: c.count, district: c.district }))
+            cities: telanganaCities.map(c => ({ city: c.city, count: c.count, district: c.district, constituency: c.constituency })),
+            districts: telanganaDistricts.map(d => ({ district: d.district, count: d.count })),
+            constituencies: telanganaConstituencies.map(c => ({ constituency: c.constituency, count: c.count, district: c.district }))
         });
     } catch (error) {
         console.error('[getLocationStats] Error:', error.message);
@@ -1968,12 +1968,25 @@ const getLocationStats = async (req, res) => {
  */
 const getLocationSummary = async (req, res) => {
     try {
-        const locationValue = String(req.query.location_city || req.query.location || 'sangrur').trim();
-        const params = {
-            ...req.query,
-            location_city: locationValue
-        };
-        const query = buildListQuery(params, { includeTab: true });
+        const locationValue = String(req.query.location_city || req.query.location || 'mahabubnagar').trim();
+
+        // For Mahabubnagar scope, match any grievance with a constituency in the 7 ACs
+        // (Hyderabad/Telangana grievances already have ACs assigned via round-robin)
+        const isMahbubnagarScope = /^mahabubnagar$/i.test(locationValue);
+        let query;
+        if (isMahbubnagarScope) {
+            const acPattern = /^(kodangal|narayanpet|mahbubnagar|jadcherla|devarkadra|makthal|shadnagar)$/i;
+            query = {
+                is_active: true,
+                'detected_location.constituency': { $regex: acPattern }
+            };
+        } else {
+            const params = {
+                ...req.query,
+                location_city: locationValue
+            };
+            query = buildListQuery(params, { includeTab: true });
+        }
 
         const [total, sentimentRows, categoryRows] = await Promise.all([
             Grievance.countDocuments(query),

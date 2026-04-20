@@ -8,7 +8,7 @@ import { Card } from '../components/ui/card';
 import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Tag } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-const SANGRUR_PC = 'SANGRUR';
+const MAHBUBNAGAR_PC = 'MAHBUBNAGAR';
 
 const TOPIC_STYLES = {
   'Political Criticism': 'bg-purple-50 text-purple-700 ring-purple-200',
@@ -48,7 +48,7 @@ const canonicalizeTopic = (value) => {
 
 const getTopicStyle = (topic) => TOPIC_STYLES[canonicalizeTopic(topic)] || 'bg-teal-50 text-teal-700 ring-teal-200';
 
-const AC_NAMES = ['Sunam', 'Dirba (SC)', 'Lehra', 'Bhadaur (SC)', 'Barnala', 'Mehal Kalan (SC)', 'Malerkotla'];
+const AC_NAMES = ['Kodangal', 'Narayanpet', 'Mahbubnagar', 'Jadcherla', 'Devarkadra', 'Makthal', 'Shadnagar'];
 
 const SENTIMENT_TIERS = {
   high:    { fill: '#15803d', hover: '#166534', stroke: '#14532d' },
@@ -85,27 +85,26 @@ const mergeTopicEntries = (entries = []) => {
 };
 
 const CITY_TO_AC = {
-  'sunam': 'Sunam', 'dirba': 'Dirba (SC)', 'lehra': 'Lehra',
-  'bhadaur': 'Bhadaur (SC)', 'barnala': 'Barnala',
-  'mehal kalan': 'Mehal Kalan (SC)', 'malerkotla': 'Malerkotla',
-  'dhuri': 'Sunam', 'moonak': 'Lehra',
-  'ahmedgarh': 'Malerkotla', 'bhawanigarh': 'Sunam',
+  'kodangal': 'Kodangal', 'narayanpet': 'Narayanpet', 'mahbubnagar': 'Mahbubnagar',
+  'mahabubnagar': 'Mahbubnagar', 'jadcherla': 'Jadcherla', 'devarkadra': 'Devarkadra',
+  'makthal': 'Makthal', 'shadnagar': 'Shadnagar',
+  'kosgi': 'Kodangal', 'bomraspet': 'Kodangal', 'doultabad': 'Kodangal',
+  'maddur': 'Kodangal', 'kalwakurthy': 'Shadnagar',
 };
 
 const CITY_TO_DISTRICT = {
-  'chandigarh': 'CHANDIGARH', 'amritsar': 'AMRITSAR', 'ludhiana': 'LUDHIANA',
-  'jalandhar': 'JALANDHAR', 'patiala': 'PATIALA', 'bathinda': 'BATHINDA',
-  'mohali': 'RUPNAGAR', 'sas nagar': 'RUPNAGAR', 'sangrur': 'SANGRUR',
-  'barnala': 'SANGRUR', 'mansa': 'MANSA', 'firozpur': 'FIROZPUR',
-  'ferozepur': 'FIROZPUR', 'hoshiarpur': 'HOSHIARPUR', 'kapurthala': 'KAPURTHALA',
-  'moga': 'MOGA', 'muktsar': 'MUKTSAR', 'sri muktsar sahib': 'MUKTSAR',
-  'faridkot': 'FARIDKOT', 'pathankot': 'GURDASPUR', 'gurdaspur': 'GURDASPUR',
-  'rupnagar': 'RUPNAGAR', 'ropar': 'RUPNAGAR', 'nawanshahr': 'NAWANSHAHR',
-  'shaheed bhagat singh nagar': 'NAWANSHAHR', 'fatehgarh sahib': 'FATEHGARH SAHIB',
-  'malerkotla': 'SANGRUR', 'khanna': 'LUDHIANA', 'rajpura': 'PATIALA',
-  'sunam': 'SANGRUR', 'dhuri': 'SANGRUR', 'lehra': 'SANGRUR', 'dirba': 'SANGRUR',
-  'budhlada': 'MANSA', 'sardulgarh': 'MANSA', 'abohar': 'FIROZPUR',
-  'fazilka': 'FIROZPUR', 'tarn taran': 'AMRITSAR', 'punjab': null,
+  'hyderabad': 'HYDERABAD', 'secunderabad': 'HYDERABAD', 'warangal': 'WARANGAL',
+  'karimnagar': 'KARIMNAGAR', 'nizamabad': 'NIZAMABAD', 'khammam': 'KHAMMAM',
+  'nalgonda': 'NALGONDA', 'adilabad': 'ADILABAD', 'mahabubnagar': 'MAHABUBNAGAR',
+  'mahbubnagar': 'MAHABUBNAGAR', 'rangareddy': 'RANGAREDDY', 'medak': 'MEDAK',
+  'sangareddy': 'SANGAREDDY', 'siddipet': 'SIDDIPET', 'vikarabad': 'VIKARABAD',
+  'kodangal': 'VIKARABAD', 'narayanpet': 'NARAYANPET', 'jadcherla': 'MAHABUBNAGAR',
+  'devarkadra': 'MAHABUBNAGAR', 'makthal': 'NARAYANPET', 'shadnagar': 'RANGAREDDY',
+  'suryapet': 'SURYAPET', 'kamareddy': 'KAMAREDDY', 'jagtial': 'JAGTIAL',
+  'peddapalli': 'PEDDAPALLI', 'mancherial': 'MANCHERIAL', 'nirmal': 'NIRMAL',
+  'wanaparthy': 'WANAPARTHY', 'nagarkurnool': 'NAGARKURNOOL', 'jangaon': 'JANGAON',
+  'mahabubabad': 'MAHABUBABAD', 'medchal': 'MEDCHAL-MALKAJGIRI',
+  'sircilla': 'RAJANNA SIRCILLA', 'telangana': null,
 };
 
 /* ─── Sentiment Pie (pure SVG donut) ─── */
@@ -198,13 +197,13 @@ const PunjabMap = ({ embedded = false }) => {
   }, [navigate, embedded]);
 
   useEffect(() => {
-    fetch('/punjab_ac.geojson')
+    fetch('/telangana_ac.geojson')
       .then(r => r.json())
       .then(data => {
-        const punjab = data.features.filter(f =>
-          f.properties.ST_NAME === 'PUNJAB' || f.properties.DIST_NAME === 'CHANDIGARH'
+        const telangana = data.features.filter(f =>
+          f.properties.ST_NAME === 'TELANGANA'
         );
-        setGeojson({ ...data, features: punjab });
+        setGeojson({ ...data, features: telangana });
       });
   }, []);
 
@@ -214,7 +213,7 @@ const PunjabMap = ({ embedded = false }) => {
       api.get('/grievances/sentiment-analytics').catch(() => ({ data: null })),
       api.get('/grievances/category-analytics').catch(() => ({ data: null })),
       api.get('/grievances/dashboard-stats').catch(() => ({ data: null })),
-      api.get('/grievances/location-summary', { params: { location_city: 'sangrur' } }).catch(() => ({ data: null })),
+      api.get('/grievances/location-summary', { params: { location_city: 'mahabubnagar' } }).catch(() => ({ data: null })),
     ]).then(([sentRes, catRes, statsRes, summaryRes]) => {
       setSentimentData(sentRes.data);
       setCategoryData(catRes.data);
@@ -226,7 +225,7 @@ const PunjabMap = ({ embedded = false }) => {
   const fetchMapStats = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/grievances/map', { params: { days: 30, scope: embedded ? 'sangrur' : 'all' } });
+      const res = await api.get('/grievances/map', { params: { days: 30, scope: embedded ? 'mahabubnagar' : 'all' } });
       const locs = res.data?.locations;
       if (locs && Object.keys(locs).length > 0) {
         setMapStats(locs);
@@ -277,7 +276,7 @@ const PunjabMap = ({ embedded = false }) => {
 
   const byDistrict = useMemo(() => {
     const m = {};
-    const sangrurAggregate = sangrurSummary
+    const mahbubnagarAggregate = sangrurSummary
       ? {
         total: sangrurSummary.total || 0,
         positive: sangrurSummary.positive || 0,
@@ -285,22 +284,22 @@ const PunjabMap = ({ embedded = false }) => {
         neutral: sangrurSummary.neutral || 0,
         categories: Array.isArray(sangrurSummary.categories) ? sangrurSummary.categories : []
       }
-      : (mapStats?.sangrur || null);
+      : (mapStats?.mahabubnagar || null);
 
-    if (sangrurAggregate) {
-      m['SANGRUR'] = {
-        count: sangrurAggregate.total ?? sangrurAggregate.count ?? 0,
-        positive: sangrurAggregate.positive || 0,
-        negative: sangrurAggregate.negative || 0,
-        neutral: sangrurAggregate.neutral || 0,
-        categories: Array.isArray(sangrurAggregate.categories) ? [...sangrurAggregate.categories] : []
+    if (mahbubnagarAggregate) {
+      m['MAHABUBNAGAR'] = {
+        count: mahbubnagarAggregate.total ?? mahbubnagarAggregate.count ?? 0,
+        positive: mahbubnagarAggregate.positive || 0,
+        negative: mahbubnagarAggregate.negative || 0,
+        neutral: mahbubnagarAggregate.neutral || 0,
+        categories: Array.isArray(mahbubnagarAggregate.categories) ? [...mahbubnagarAggregate.categories] : []
       };
     }
 
     Object.entries(mapStats).forEach(([keyword, stats]) => {
       const dist = CITY_TO_DISTRICT[keyword];
       if (!dist) return;
-      if (sangrurAggregate && dist === 'SANGRUR') return;
+      if (mahbubnagarAggregate && dist === 'MAHABUBNAGAR') return;
       if (!m[dist]) m[dist] = { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] };
       const totalCount = (stats.negative || 0) + (stats.positive || 0) + (stats.neutral || 0);
       m[dist].count += totalCount;
@@ -335,20 +334,20 @@ const PunjabMap = ({ embedded = false }) => {
     return m;
   }, [mapStats, embedded]);
 
-  const sangrurFeatures = useMemo(() => {
+  const pcFeatures = useMemo(() => {
     if (!geojson || !embedded) return null;
-    const feats = geojson.features.filter(f => f.properties.PC_NAME === SANGRUR_PC);
+    const feats = geojson.features.filter(f => f.properties.PC_NAME === MAHBUBNAGAR_PC);
     return { ...geojson, features: feats };
   }, [geojson, embedded]);
 
   const { projection, pathGenerator, dims } = useMemo(() => {
     if (!geojson) return { projection: null, pathGenerator: null, dims: { w: 800, h: 950 } };
-    const source = (embedded && sangrurFeatures) ? sangrurFeatures : geojson;
+    const source = (embedded && pcFeatures) ? pcFeatures : geojson;
     const w = embedded ? 600 : 700;
     const h = embedded ? 600 : 850;
     const proj = geoMercator().fitSize([w, h], source);
     return { projection: proj, pathGenerator: geoPath().projection(proj), dims: { w, h } };
-  }, [geojson, embedded, sangrurFeatures]);
+  }, [geojson, embedded, pcFeatures]);
 
   const districtCentroids = useMemo(() => {
     if (!geojson || !projection) return {};
@@ -369,24 +368,24 @@ const PunjabMap = ({ embedded = false }) => {
   }, [geojson, projection]);
 
   const acCentroids = useMemo(() => {
-    if (!sangrurFeatures || !projection) return {};
+    if (!pcFeatures || !projection) return {};
     const out = {};
-    sangrurFeatures.features.forEach(f => {
+    pcFeatures.features.forEach(f => {
       const name = f.properties.AC_NAME;
       const c = geoCentroid(f);
       const px = projection(c);
       if (px) out[name] = px;
     });
     return out;
-  }, [sangrurFeatures, projection]);
+  }, [pcFeatures, projection]);
 
   const districtFeatures = useMemo(() => {
     if (!geojson) return {};
     const m = {};
     geojson.features.forEach(f => {
       const d = f.properties.DIST_NAME;
-      if (!m[d]) m[d] = { name: d, hasSangrur: false };
-      if (f.properties.PC_NAME === SANGRUR_PC) m[d].hasSangrur = true;
+      if (!m[d]) m[d] = { name: d, hasMahbubnagar: false };
+      if (f.properties.PC_NAME === MAHBUBNAGAR_PC) m[d].hasMahbubnagar = true;
     });
     return m;
   }, [geojson]);
@@ -416,31 +415,31 @@ const PunjabMap = ({ embedded = false }) => {
         neutral: sangrurSummary.neutral || 0
       };
     }
-    const sangrur = mapStats?.sangrur || byDistrict['SANGRUR'];
-    if (sangrur) return { positive: sangrur.positive || 0, negative: sangrur.negative || 0, neutral: sangrur.neutral || 0 };
+    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
+    if (mah) return { positive: mah.positive || 0, negative: mah.negative || 0, neutral: mah.neutral || 0 };
     return { positive: 0, negative: 0, neutral: 0 };
   }, [sangrurSummary, mapStats, byDistrict]);
 
   const totalGrievances = useMemo(() => {
     if (sangrurSummary) return sangrurSummary.total || 0;
-    const sangrur = mapStats?.sangrur || byDistrict['SANGRUR'];
-    if (!sangrur) return 0;
-    return sangrur.total ?? sangrur.count ?? 0;
+    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
+    if (!mah) return 0;
+    return mah.total ?? mah.count ?? 0;
   }, [sangrurSummary, mapStats, byDistrict]);
 
   const topCategories = useMemo(() => {
     if (sangrurSummary && Array.isArray(sangrurSummary.categories)) {
       return mergeTopicEntries(sangrurSummary.categories).slice(0, 6);
     }
-    const sangrur = mapStats?.sangrur || byDistrict['SANGRUR'];
-    if (!sangrur || !Array.isArray(sangrur.categories)) return [];
-    return mergeTopicEntries(sangrur.categories).slice(0, 6);
+    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
+    if (!mah || !Array.isArray(mah.categories)) return [];
+    return mergeTopicEntries(mah.categories).slice(0, 6);
   }, [sangrurSummary, mapStats, byDistrict]);
 
   if (!geojson) return <div className={cn('flex items-center justify-center', embedded ? 'h-full' : 'h-screen')}><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>;
 
   /* ── Embedded: Sangrur-only AC-level map ── */
-  if (embedded && sangrurFeatures) {
+  if (embedded && pcFeatures) {
     const hovAcName = hoveredDistrict;
     const hovStats = hovAcName ? (byAC[hovAcName] || { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] }) : null;
     const hovTopCats = hovStats?.categories || [];
@@ -452,7 +451,7 @@ const PunjabMap = ({ embedded = false }) => {
         {loading && <div className="absolute top-2 right-2 z-10"><Loader2 className="h-4 w-4 animate-spin text-green-500" /></div>}
         <div className="relative bg-white h-full overflow-hidden">
           <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
-            {sangrurFeatures.features.map((f, i) => {
+            {pcFeatures.features.map((f, i) => {
               const acName = f.properties.AC_NAME;
               const colors = getSentimentColors(byAC[acName]);
               const isHov = hovAcName === acName;
@@ -485,12 +484,12 @@ const PunjabMap = ({ embedded = false }) => {
                 </g>
               );
             })}
-            {sangrurFeatures.features.map((f, i) => (
+            {pcFeatures.features.map((f, i) => (
               <path key={`ob-${i}`} d={pathGenerator(f.geometry)} fill="none" stroke="#14532d" strokeWidth={2} className="pointer-events-none" />
             ))}
           </svg>
           <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-green-200 rounded-lg px-2.5 py-1.5 text-[10px] text-gray-600 shadow-sm">
-            <span className="font-bold text-green-700">{sangrurFeatures.features.length} ACs</span>
+            <span className="font-bold text-green-700">{pcFeatures.features.length} ACs</span>
           </div>
           {hovAcName && (
             <div
@@ -504,7 +503,7 @@ const PunjabMap = ({ embedded = false }) => {
               <div className="bg-white border border-gray-200 text-xs rounded-xl shadow-xl overflow-hidden">
                 <div className="bg-green-600 text-white px-3 py-1.5 flex items-center justify-between">
                   <span className="font-bold text-[12px]">{hovAcName}</span>
-                  <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded">AC · Sangrur PC</span>
+                  <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded">AC · Kodangal</span>
                 </div>
                 <div className="p-2.5">
                   {!hovStats || hovStats.negative === 0 ? (
@@ -571,7 +570,7 @@ const PunjabMap = ({ embedded = false }) => {
       {/* Header */}
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sangrur Constituency Overview Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Kodangal Constituency Overview Dashboard</h1>
         </div>
         <div className="flex items-center gap-3">
           {loading && <Loader2 className="h-5 w-5 animate-spin text-gray-400" />}
@@ -592,16 +591,16 @@ const PunjabMap = ({ embedded = false }) => {
             <div className="relative">
               <img
                 src="/CM.webp"
-                alt="CM Bhagwant Mann"
+                alt="CM Revanth Reddy"
                 className="w-full object-cover object-top"
                 style={{ height: '320px' }}
               />
               {/* gradient overlay at bottom */}
               <div className="absolute inset-0 bg-gradient-to-t from-green-900/90 via-green-900/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-4">
-                <h3 className="text-xl font-extrabold text-white leading-tight drop-shadow">Bhagwant Mann</h3>
-                <p className="text-green-200 text-sm font-medium mt-0.5">Chief Minister, Punjab</p>
-                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[11px] font-semibold border border-white/30">MP · Sangrur Constituency</span>
+                <h3 className="text-xl font-extrabold text-white leading-tight drop-shadow">Revanth Reddy</h3>
+                <p className="text-green-200 text-sm font-medium mt-0.5">Chief Minister, Telangana</p>
+                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[11px] font-semibold border border-white/30">MLA · Kodangal Constituency</span>
               </div>
             </div>
           </Card>
@@ -610,7 +609,7 @@ const PunjabMap = ({ embedded = false }) => {
           <Card className="p-4 border-0 shadow-md">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-slate-700">Sentiment Analysis</h4>
-              <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">Sangrur</span>
+              <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">Mahabubnagar</span>
             </div>
             <div className="flex justify-center">
               <SentimentPie
@@ -697,13 +696,13 @@ const PunjabMap = ({ embedded = false }) => {
               {/* Constituency polygons */}
               {geojson.features.map((f, i) => {
                 const { DIST_NAME, PC_NAME } = f.properties;
-                const isSangrur = PC_NAME === SANGRUR_PC;
+                const isMahbubnagar = PC_NAME === MAHBUBNAGAR_PC;
                 const isHov = hoveredDistrict === DIST_NAME;
                 const distStats = byDistrict[DIST_NAME];
                 const hasData = distStats && distStats.negative > 0;
-                // Only Sangrur gets green; all other districts stay gray/white
+                // Only Mahabubnagar PC gets green; all other districts stay gray/white
                 let colors;
-                if (isSangrur) {
+                if (isMahbubnagar) {
                   colors = hasData ? getSentimentColors(distStats) : { fill: '#bbf7d0', hover: '#86efac', stroke: '#22c55e' };
                 } else {
                   colors = { fill: '#f8fafc', hover: '#f1f5f9', stroke: '#cbd5e1' };
@@ -711,8 +710,8 @@ const PunjabMap = ({ embedded = false }) => {
                 return (
                   <path key={i} d={pathGenerator(f.geometry)}
                     fill={isHov ? colors.hover : colors.fill}
-                    stroke={isHov ? '#0f172a' : isSangrur ? '#15803d' : colors.stroke}
-                    strokeWidth={isHov ? 2.5 : isSangrur ? 1.4 : 0.5}
+                    stroke={isHov ? '#0f172a' : isMahbubnagar ? '#15803d' : colors.stroke}
+                    strokeWidth={isHov ? 2.5 : isMahbubnagar ? 1.4 : 0.5}
                     opacity={hoveredDistrict && !isHov ? 0.6 : 1}
                     className="cursor-pointer transition-all duration-150"
                     onMouseEnter={(e) => handleMouseMove(e, DIST_NAME)}
@@ -722,9 +721,9 @@ const PunjabMap = ({ embedded = false }) => {
                 );
               })}
 
-              {/* Sangrur PC bold outline */}
+              {/* Mahabubnagar PC bold outline */}
               {geojson.features
-                .filter(f => f.properties.PC_NAME === SANGRUR_PC)
+                .filter(f => f.properties.PC_NAME === MAHBUBNAGAR_PC)
                 .map((f, i) => (
                   <path key={`so-${i}`} d={pathGenerator(f.geometry)} fill="none"
                     stroke="#15803d" strokeWidth={2.5} className="pointer-events-none" />
@@ -734,9 +733,9 @@ const PunjabMap = ({ embedded = false }) => {
               {/* District Labels */}
               {Object.entries(districtCentroids).map(([name, px]) => {
                 const info = districtFeatures[name];
-                const isSangrurDist = info?.hasSangrur;
-                // Only show count badge for Sangrur
-                const count = isSangrurDist ? (totalGrievances || 0) : 0;
+                const isMahbubnagarDist = info?.hasMahbubnagar;
+                // Only show count badge for Mahabubnagar
+                const count = isMahbubnagarDist ? (totalGrievances || 0) : 0;
                 const badgeW = count >= 100 ? 36 : count >= 10 ? 28 : 22;
                 return (
                   <g key={name} className="pointer-events-none select-none">
@@ -744,13 +743,13 @@ const PunjabMap = ({ embedded = false }) => {
                       x={px[0]} y={px[1] - (count > 0 ? 12 : 2)}
                       textAnchor="middle"
                       style={{
-                        fontSize: isSangrurDist ? '13px' : '9px',
-                        fontWeight: isSangrurDist ? 800 : 500,
-                        fill: isSangrurDist ? '#14532d' : '#94a3b8',
-                        stroke: isSangrurDist ? '#bbf7d0' : 'white',
+                        fontSize: isMahbubnagarDist ? '13px' : '9px',
+                        fontWeight: isMahbubnagarDist ? 800 : 500,
+                        fill: isMahbubnagarDist ? '#14532d' : '#94a3b8',
+                        stroke: isMahbubnagarDist ? '#bbf7d0' : 'white',
                         strokeWidth: 3, paintOrder: 'stroke',
                       }}
-                    >{name}{isSangrurDist ? ' ★' : ''}</text>
+                    >{name}{isMahbubnagarDist ? ' ★' : ''}</text>
                     {count > 0 && (
                       <>
                         <rect x={px[0] - badgeW / 2} y={px[1] - 1} width={badgeW} height={18} rx={5}
@@ -766,7 +765,7 @@ const PunjabMap = ({ embedded = false }) => {
 
             {/* Summary strip */}
             <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm border border-green-200 rounded-lg px-3 py-2 text-[11px] text-gray-600 shadow-sm">
-              <span className="font-bold text-green-700">Sangrur Constituency</span>
+              <span className="font-bold text-green-700">Kodangal Constituency · CM Revanth Reddy</span>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="inline-block w-2 h-2 rounded-sm bg-green-500" />
                 <span className="text-[10px] text-slate-500">Hover over any district to see grievance details</span>
@@ -788,17 +787,17 @@ const PunjabMap = ({ embedded = false }) => {
                 {/* Header */}
                 <div className={cn(
                   'px-3.5 py-2 flex items-center justify-between',
-                  districtFeatures[hoveredDistrict]?.hasSangrur ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-800'
+                  districtFeatures[hoveredDistrict]?.hasMahbubnagar ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-800'
                 )}>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm">{hoveredDistrict}</span>
                     {hovTotal > 0 && (
-                      <span className={cn('text-[10px] font-medium', districtFeatures[hoveredDistrict]?.hasSangrur ? 'text-white/80' : 'text-gray-500')}>
+                      <span className={cn('text-[10px] font-medium', districtFeatures[hoveredDistrict]?.hasMahbubnagar ? 'text-white/80' : 'text-gray-500')}>
                         {hovTotal} grievance{hovTotal !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
-                  {districtFeatures[hoveredDistrict]?.hasSangrur && (
+                  {districtFeatures[hoveredDistrict]?.hasMahbubnagar && (
                     <Badge className="bg-white/20 text-white text-[10px] border-0">CM's Constituency</Badge>
                   )}
                 </div>

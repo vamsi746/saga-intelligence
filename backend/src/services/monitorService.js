@@ -95,6 +95,18 @@ const hasS3Gaps = (media = []) => {
   });
 };
 
+const REVENTH_TARGET_REGEX = /\b(revanth\s*reddy|revanth|a\.?\s*revanth\s*reddy|cm\s*revanth|chief\s*minister\s*revanth)\b/i;
+
+const isNegativeRevanthTargetPost = (content = {}) => {
+  const sentiment = String(content?.sentiment || '').toLowerCase().trim();
+  if (sentiment !== 'negative') return false;
+
+  const text = String(content?.text || '').trim();
+  if (!text) return false;
+
+  return REVENTH_TARGET_REGEX.test(text);
+};
+
 const hasAnyMedia = (media = []) => Array.isArray(media) && media.length > 0;
 
 const hasAnyTwitterMedia = (media = [], quotedContent = null) => {
@@ -467,8 +479,10 @@ const monitorXSource = async (source) => {
 
     if (!tweets || tweets.length === 0) return [];
 
-    // Extended to 7 days for initial data ingestion (was 24h)
-    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    // Profile monitor lookback window (default: last 1 day)
+    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 1);
+    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 1;
+    const cutoff = Date.now() - (safeLookbackDays * 24 * 60 * 60 * 1000);
     tweets = tweets.filter(t => {
       const created = t.created_at ? new Date(t.created_at).getTime() : NaN;
       return Number.isFinite(created) ? created >= cutoff : true;
@@ -1840,6 +1854,11 @@ const performFullAnalysis = async (content, settings, keywords, options = {}) =>
     // Explicitly allow High Risk AI content even if no specific "keyword" matched
     const isHighRiskAI = (alertRiskLevel === 'high');
 
+    // Deployment rule: only keep alerts for negative posts targeting Revanth Reddy.
+    if (!isNegativeRevanthTargetPost(content)) {
+      return false;
+    }
+
     // FORCE-ALLOW: Create alert for every post regardless of risk score (User Request)
     // The user explicitly requested: "dont skip or archive any alert if risk score is o also it is low alert"
     // So we bypass the filter below.
@@ -2068,7 +2087,7 @@ const rescanContent = async () => {
       };
 
       let existingAlert = await Alert.findOne({ content_id: content.id });
-      if (!existingAlert && (finalRiskLevel !== 'low' || velocity)) {
+      if (!existingAlert && isNegativeRevanthTargetPost(content) && (finalRiskLevel !== 'low' || velocity)) {
         await new Alert(alertData).save();
         alertCount++;
       }

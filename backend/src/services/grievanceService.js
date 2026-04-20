@@ -20,107 +20,119 @@ const translationService = require('./translationService');
 //          LOCATION EXTRACTION (backend-side)
 // ═══════════════════════════════════════════════════════════════
 const LOCATION_SERVICE_URL = process.env.LOCATION_SERVICE_URL || 'http://178.255.44.130:5003';
-const { ALL_PUNJAB_LOCATIONS } = require('../config/punjabLocations');
+const { ALL_TELANGANA_LOCATIONS } = require('../config/telanganaLocations');
 
 // ── City / Town → District mapping for keyword detection ──
 const KEYWORD_TO_DISTRICT = {
-    // Amritsar district
-    'amritsar': 'Amritsar', 'ajnala': 'Amritsar', 'majitha': 'Amritsar', 'rayya': 'Amritsar',
-    'jandiala guru': 'Amritsar', 'rajasansi': 'Amritsar', 'attari': 'Amritsar', 'wagah': 'Amritsar',
-    'verka': 'Amritsar', 'chheharta': 'Amritsar', 'lopoke': 'Amritsar', 'baba bakala': 'Amritsar',
-    'beas': 'Amritsar', 'harike': 'Amritsar', 'sultanwind': 'Amritsar', 'tarsikka': 'Amritsar',
-    // Ludhiana district
-    'ludhiana': 'Ludhiana', 'jagraon': 'Ludhiana', 'samrala': 'Ludhiana', 'raikot': 'Ludhiana',
-    'payal': 'Ludhiana', 'doraha': 'Ludhiana', 'sahnewal': 'Ludhiana', 'machhiwara': 'Ludhiana',
-    'khanna': 'Ludhiana', 'mullanpur': 'Ludhiana', 'dakha': 'Ludhiana', 'mandi gobindgarh': 'Ludhiana',
-    'kila raipur': 'Ludhiana', 'gill': 'Ludhiana',
-    // Jalandhar district
-    'jalandhar': 'Jalandhar', 'nakodar': 'Jalandhar', 'shahkot': 'Jalandhar', 'phillaur': 'Jalandhar',
-    'adampur': 'Jalandhar', 'goraya': 'Jalandhar', 'kartarpur': 'Jalandhar', 'nurmahal': 'Jalandhar',
-    'phagwara': 'Jalandhar',
-    // Patiala district
-    'patiala': 'Patiala', 'rajpura': 'Patiala', 'samana': 'Patiala', 'nabha': 'Patiala',
-    'sanaur': 'Patiala', 'patran': 'Patiala', 'ghanaur': 'Patiala', 'shutrana': 'Patiala', 'banur': 'Patiala',
-    // Bathinda district
-    'bathinda': 'Bathinda', 'bhatinda': 'Bathinda', 'rampura phul': 'Bathinda', 'talwandi sabo': 'Bathinda',
-    'maur': 'Bathinda', 'bhucho mandi': 'Bathinda', 'goniana': 'Bathinda', 'nathana': 'Bathinda',
-    // Sangrur district
-    'sangrur': 'Sangrur', 'sunam': 'Sangrur', 'dhuri': 'Sangrur', 'lehragaga': 'Sangrur',
-    'dirba': 'Sangrur', 'moonak': 'Sangrur', 'khanauri': 'Sangrur', 'longowal': 'Sangrur',
-    'bhawanigarh': 'Sangrur', 'ahmedgarh': 'Sangrur', 'malerkotla': 'Sangrur',
-    // Mohali (SAS Nagar) district
-    'mohali': 'Mohali', 'kharar': 'Mohali', 'zirakpur': 'Mohali', 'dera bassi': 'Mohali',
-    'derabassi': 'Mohali', 'kurali': 'Mohali', 'lalru': 'Mohali', 'gharuan': 'Mohali',
-    'landran': 'Mohali', 'sohana': 'Mohali',
-    // Gurdaspur district
-    'gurdaspur': 'Gurdaspur', 'dinanagar': 'Gurdaspur', 'batala': 'Gurdaspur', 'qadian': 'Gurdaspur',
-    'sri hargobindpur': 'Gurdaspur', 'dera baba nanak': 'Gurdaspur', 'dhariwal': 'Gurdaspur',
-    // Pathankot district
-    'pathankot': 'Pathankot', 'sujanpur': 'Pathankot', 'narot jaimal singh': 'Pathankot',
-    // Hoshiarpur district
-    'hoshiarpur': 'Hoshiarpur', 'dasuya': 'Hoshiarpur', 'mukerian': 'Hoshiarpur',
-    'garhshankar': 'Hoshiarpur', 'hariana': 'Hoshiarpur', 'talwara': 'Hoshiarpur', 'tanda': 'Hoshiarpur',
-    // Kapurthala district
-    'kapurthala': 'Kapurthala', 'sultanpur lodhi': 'Kapurthala', 'bholath': 'Kapurthala',
-    // Rupnagar district
-    'rupnagar': 'Rupnagar', 'ropar': 'Rupnagar', 'anandpur sahib': 'Rupnagar', 'nangal': 'Rupnagar',
-    'chamkaur sahib': 'Rupnagar', 'morinda': 'Rupnagar', 'kiratpur sahib': 'Rupnagar',
-    // Fatehgarh Sahib district
-    'fatehgarh sahib': 'Fatehgarh Sahib', 'sirhind': 'Fatehgarh Sahib', 'amloh': 'Fatehgarh Sahib',
-    'bassi pathana': 'Fatehgarh Sahib', 'khamano': 'Fatehgarh Sahib',
-    // Nawanshahr (SBS Nagar) district
-    'nawanshahr': 'Nawanshahr', 'banga': 'Nawanshahr', 'balachaur': 'Nawanshahr',
-    // Tarn Taran district
-    'tarn taran': 'Tarn Taran', 'patti': 'Tarn Taran', 'khem karan': 'Tarn Taran',
-    'bhikhiwind': 'Tarn Taran', 'goindwal sahib': 'Tarn Taran', 'khadur sahib': 'Tarn Taran',
-    // Mansa district
-    'mansa': 'Mansa', 'budhlada': 'Mansa', 'sardulgarh': 'Mansa', 'bareta': 'Mansa',
-    // Fazilka district
-    'fazilka': 'Fazilka', 'jalalabad': 'Fazilka', 'abohar': 'Fazilka',
-    // Ferozepur district
-    'ferozepur': 'Ferozepur', 'firozpur': 'Ferozepur', 'zira': 'Ferozepur',
-    'guru har sahai': 'Ferozepur', 'makhu': 'Ferozepur',
-    // Faridkot district
-    'faridkot': 'Faridkot', 'kotkapura': 'Faridkot', 'jaito': 'Faridkot',
-    // Muktsar district
-    'muktsar': 'Muktsar', 'malout': 'Muktsar', 'gidderbaha': 'Muktsar',
-    // Moga district
-    'moga': 'Moga', 'baghapurana': 'Moga', 'nihal singh wala': 'Moga', 'dharamkot': 'Moga',
-    // Barnala district
-    'barnala': 'Barnala', 'tapa': 'Barnala', 'dhanaula': 'Barnala', 'bhadaur': 'Barnala',
-    // Chandigarh
-    'chandigarh': 'Chandigarh', 'manimajra': 'Chandigarh', 'panchkula': 'Chandigarh',
+    // Hyderabad district
+    'hyderabad': 'Hyderabad', 'secunderabad': 'Hyderabad', 'begumpet': 'Hyderabad',
+    'ameerpet': 'Hyderabad', 'banjara hills': 'Hyderabad', 'jubilee hills': 'Hyderabad',
+    'madhapur': 'Hyderabad', 'gachibowli': 'Hyderabad', 'kukatpally': 'Hyderabad',
+    'miyapur': 'Hyderabad', 'dilsukhnagar': 'Hyderabad', 'malakpet': 'Hyderabad',
+    'nampally': 'Hyderabad', 'charminar': 'Hyderabad', 'mehdipatnam': 'Hyderabad',
+    'abids': 'Hyderabad', 'koti': 'Hyderabad', 'shamshabad': 'Hyderabad',
+    'lb nagar': 'Hyderabad', 'uppal': 'Hyderabad',
+    // Rangareddy district
+    'rangareddy': 'Rangareddy', 'ranga reddy': 'Rangareddy', 'ibrahimpatnam': 'Rangareddy',
+    'chevella': 'Rangareddy', 'tandur': 'Rangareddy', 'maheshwaram': 'Rangareddy',
+    'kandukur': 'Rangareddy', 'kothur': 'Rangareddy', 'farooqnagar': 'Rangareddy',
+    'shadnagar': 'Rangareddy',
+    // Medchal-Malkajgiri district
+    'medchal': 'Medchal-Malkajgiri', 'malkajgiri': 'Medchal-Malkajgiri',
+    'kompally': 'Medchal-Malkajgiri', 'alwal': 'Medchal-Malkajgiri',
+    'boduppal': 'Medchal-Malkajgiri', 'ghatkesar': 'Medchal-Malkajgiri',
+    // Mahabubnagar district
+    'mahabubnagar': 'Mahabubnagar', 'mahbubnagar': 'Mahabubnagar',
+    'jadcherla': 'Mahabubnagar', 'devarkadra': 'Mahabubnagar',
+    'koilkonda': 'Mahabubnagar', 'addakal': 'Mahabubnagar',
+    // Narayanpet district
+    'narayanpet': 'Narayanpet', 'makthal': 'Narayanpet', 'utkoor': 'Narayanpet',
+    // Vikarabad district
+    'vikarabad': 'Vikarabad', 'kodangal': 'Vikarabad', 'bomraspet': 'Vikarabad',
+    'doultabad': 'Vikarabad', 'parigi': 'Vikarabad', 'mominpet': 'Vikarabad',
+    // Wanaparthy district
+    'wanaparthy': 'Wanaparthy', 'pebbair': 'Wanaparthy', 'gadwal': 'Wanaparthy',
+    // Nagarkurnool district
+    'nagarkurnool': 'Nagarkurnool', 'kalwakurthy': 'Nagarkurnool',
+    'achampet': 'Nagarkurnool', 'kollapur': 'Nagarkurnool',
+    // Warangal district
+    'warangal': 'Warangal', 'hanamkonda': 'Warangal', 'kazipet': 'Warangal',
+    'narsampet': 'Warangal', 'parkal': 'Warangal', 'wardhannapet': 'Warangal',
+    // Karimnagar district
+    'karimnagar': 'Karimnagar', 'huzurabad': 'Karimnagar', 'choppadandi': 'Karimnagar',
+    'manakondur': 'Karimnagar', 'vemulawada': 'Karimnagar',
+    // Nizamabad district
+    'nizamabad': 'Nizamabad', 'bodhan': 'Nizamabad', 'armoor': 'Nizamabad',
+    // Kamareddy district
+    'kamareddy': 'Kamareddy', 'yellareddy': 'Kamareddy', 'banswada': 'Kamareddy',
+    // Sircilla district
+    'sircilla': 'Rajanna Sircilla',
+    // Khammam district
+    'khammam': 'Khammam', 'kothagudem': 'Khammam', 'bhadrachalam': 'Khammam',
+    'yellandu': 'Khammam', 'sathupalli': 'Khammam', 'madhira': 'Khammam', 'wyra': 'Khammam',
+    // Nalgonda district
+    'nalgonda': 'Nalgonda', 'miryalaguda': 'Nalgonda', 'devarakonda': 'Nalgonda',
+    // Suryapet district
+    'suryapet': 'Suryapet', 'kodad': 'Suryapet', 'huzurnagar': 'Suryapet',
+    // Medak / Sangareddy / Siddipet
+    'medak': 'Medak', 'siddipet': 'Siddipet', 'sangareddy': 'Sangareddy',
+    'zaheerabad': 'Sangareddy', 'narayankhed': 'Sangareddy', 'gajwel': 'Siddipet',
+    // Adilabad district
+    'adilabad': 'Adilabad', 'mancherial': 'Mancherial', 'nirmal': 'Nirmal',
+    'bellampalli': 'Mancherial', 'asifabad': 'Adilabad',
+    // Jagtial district
+    'jagtial': 'Jagtial', 'koratla': 'Jagtial', 'metpally': 'Jagtial',
+    // Peddapalli district
+    'peddapalli': 'Peddapalli', 'ramagundam': 'Peddapalli', 'godavarikhani': 'Peddapalli',
+    // Jangaon district
+    'jangaon': 'Jangaon', 'ghanpur': 'Jangaon',
+    // Mahabubabad district
+    'mahabubabad': 'Mahabubabad', 'dornakal': 'Mahabubabad', 'thorrur': 'Mahabubabad',
+    // Yadadri Bhuvanagiri
+    'bhongir': 'Yadadri Bhuvanagiri', 'yadagirigutta': 'Yadadri Bhuvanagiri',
+    // State reference
+    'telangana': 'Hyderabad',
 };
 
 // Build a sorted array for multi-word matching (longest first for greedy match)
-const KEYWORD_LIST = [...ALL_PUNJAB_LOCATIONS]
+const KEYWORD_LIST = [...ALL_TELANGANA_LOCATIONS]
     .filter(kw => kw.length >= 3) // skip tiny tokens
     .sort((a, b) => b.length - a.length); // longest first
 
-const SANGRUR_ACS = [
-    'Mehal Kalan',
-    'Malerkotla',
-    'Bhadaur',
-    'Barnala',
-    'Sunam',
-    'Dirba',
-    'Lehra'
+const MAHABUBNAGAR_ACS = [
+    'Kodangal',
+    'Narayanpet',
+    'Mahbubnagar',
+    'Jadcherla',
+    'Devarkadra',
+    'Makthal',
+    'Shadnagar'
 ];
 
-const SANGRUR_AC_ALIASES = {
-    'Mehal Kalan': ['mehal kalan', 'mehalkalan', 'mahal kalan', 'mahalkalan'],
-    'Malerkotla': ['malerkotla'],
-    'Bhadaur': ['bhadaur'],
-    'Barnala': ['barnala'],
-    'Sunam': ['sunam'],
-    'Dirba': ['dirba', 'dibra'],
-    'Lehra': ['lehra', 'lehragaga', 'lehra gaga']
+const MAHABUBNAGAR_AC_ALIASES = {
+    'Kodangal': ['kodangal', 'kodangallu'],
+    'Narayanpet': ['narayanpet', 'narayanapet'],
+    'Mahbubnagar': ['mahbubnagar', 'mahabubnagar', 'mahboobnagar', 'palamoor'],
+    'Jadcherla': ['jadcherla', 'jadcharla'],
+    'Devarkadra': ['devarkadra', 'devarakadra'],
+    'Makthal': ['makthal', 'maktal'],
+    'Shadnagar': ['shadnagar', 'shadnager', 'shad nagar']
 };
 
-const PUNJABI_SCRIPT_REGEX = /[\u0A00-\u0A7F]/;
+const MAHABUBNAGAR_AC_TO_DISTRICT = {
+    'Kodangal': 'Vikarabad',
+    'Narayanpet': 'Narayanpet',
+    'Mahbubnagar': 'Mahabubnagar',
+    'Jadcherla': 'Mahabubnagar',
+    'Devarkadra': 'Mahabubnagar',
+    'Makthal': 'Narayanpet',
+    'Shadnagar': 'Rangareddy'
+};
+
+const TELUGU_SCRIPT_REGEX = /[\u0C00-\u0C7F]/;
 const TOKEN_BOUNDARY_REGEX = /[^a-z0-9_]/i;
-let lastPunjabiTranslationWarningAt = 0;
-const PUNJABI_TRANSLATION_WARNING_THROTTLE_MS = Number(process.env.PUNJABI_TRANSLATION_WARNING_THROTTLE_MS || 30000);
+let lastTeluguTranslationWarningAt = 0;
+const TELUGU_TRANSLATION_WARNING_THROTTLE_MS = Number(process.env.TELUGU_TRANSLATION_WARNING_THROTTLE_MS || 30000);
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const normalizeCompact = (value = '') => String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -134,33 +146,55 @@ const appendSourceTagOnce = (source, tag) => {
     return tokens.join('+');
 };
 
-const isSangrurTaggedLocation = (location = {}) => {
+const isMahbubnagarTaggedLocation = (location = {}) => {
     const city = String(location.city || '').toLowerCase();
     const district = String(location.district || '').toLowerCase();
     const constituency = String(location.constituency || '').toLowerCase();
+    const keyword = String(location.keyword_matched || '').toLowerCase();
+    const acByCity = findCanonicalMahbubnagarAcFromLooseValue(city);
+    const acByDistrict = findCanonicalMahbubnagarAcFromLooseValue(district);
+    const acByKeyword = findCanonicalMahbubnagarAcFromLooseValue(keyword);
     return (
-        city.includes('sangrur') ||
-        district.includes('sangrur') ||
-        constituency.includes('sangrur') ||
-        !!findCanonicalSangrurAc(constituency)
+        city.includes('mahabubnagar') || city.includes('mahbubnagar') ||
+        district.includes('mahabubnagar') || district.includes('mahbubnagar') ||
+        constituency.includes('mahabubnagar') || constituency.includes('mahbubnagar') ||
+        !!findCanonicalMahbubnagarAc(constituency) ||
+        !!acByCity || !!acByDistrict || !!acByKeyword
     );
 };
 
-const findCanonicalSangrurAc = (value = '') => {
+const findCanonicalMahbubnagarAc = (value = '') => {
     const normalized = normalizeCompact(value);
     if (!normalized) return null;
-    for (const ac of SANGRUR_ACS) {
+    for (const ac of MAHABUBNAGAR_ACS) {
         if (normalizeCompact(ac) === normalized) return ac;
     }
     return null;
 };
 
-const findSangrurAcInText = (text = '') => {
+const findCanonicalMahbubnagarAcFromLooseValue = (value = '') => {
+    const lower = String(value || '').toLowerCase().trim();
+    if (!lower) return null;
+
+    const canonical = findCanonicalMahbubnagarAc(lower);
+    if (canonical) return canonical;
+
+    for (const [ac, aliases] of Object.entries(MAHABUBNAGAR_AC_ALIASES)) {
+        for (const alias of aliases) {
+            if (normalizeCompact(alias) === normalizeCompact(lower)) {
+                return ac;
+            }
+        }
+    }
+    return null;
+};
+
+const findMahbubnagarAcInText = (text = '') => {
     if (!text || typeof text !== 'string') return null;
     const lower = text.toLowerCase();
     let bestMatch = null;
 
-    for (const [canonical, aliases] of Object.entries(SANGRUR_AC_ALIASES)) {
+    for (const [canonical, aliases] of Object.entries(MAHABUBNAGAR_AC_ALIASES)) {
         for (const alias of aliases) {
             const aliasPattern = escapeRegex(alias.toLowerCase()).replace(/\s+/g, '[\\s_-]+');
             const regex = new RegExp(`(^|[^a-z0-9_])([@#]?${aliasPattern})(?=$|[^a-z0-9_])`, 'ig');
@@ -199,12 +233,12 @@ const findSangrurAcInText = (text = '') => {
     return bestMatch;
 };
 
-const getNextSangrurAcByRoundRobin = async ({ dryRun = false, rrState = null } = {}) => {
+const getNextMahbubnagarAcByRoundRobin = async ({ dryRun = false, rrState = null } = {}) => {
     if (dryRun) {
         if (!rrState || typeof rrState.nextIndex !== 'number') {
-            return SANGRUR_ACS[0];
+            return MAHABUBNAGAR_ACS[0];
         }
-        const constituency = SANGRUR_ACS[rrState.nextIndex % SANGRUR_ACS.length];
+        const constituency = MAHABUBNAGAR_ACS[rrState.nextIndex % MAHABUBNAGAR_ACS.length];
         rrState.nextIndex += 1;
         return constituency;
     }
@@ -213,7 +247,7 @@ const getNextSangrurAcByRoundRobin = async ({ dryRun = false, rrState = null } =
         { id: 'grievance_settings' },
         {
             $setOnInsert: { id: 'grievance_settings' },
-            $inc: { sangrur_ac_rr_index: 1 }
+            $inc: { mahabubnagar_ac_rr_index: 1 }
         },
         {
             new: true,
@@ -221,15 +255,15 @@ const getNextSangrurAcByRoundRobin = async ({ dryRun = false, rrState = null } =
             setDefaultsOnInsert: true
         }
     );
-    const indexValue = Number(updated?.sangrur_ac_rr_index || 1);
-    return SANGRUR_ACS[(indexValue - 1) % SANGRUR_ACS.length];
+    const indexValue = Number(updated?.mahabubnagar_ac_rr_index || 1);
+    return MAHABUBNAGAR_ACS[(indexValue - 1) % MAHABUBNAGAR_ACS.length];
 };
 
-const getSangrurConstituencyFromText = async (text = '') => {
+const getMahbubnagarConstituencyFromText = async (text = '') => {
     if (!text || typeof text !== 'string') return null;
     const candidates = [text];
 
-    if (PUNJABI_SCRIPT_REGEX.test(text)) {
+    if (TELUGU_SCRIPT_REGEX.test(text)) {
         try {
             const translated = await translationService.translate(text, 'en', 'auto');
             if (translated && translated.trim()) {
@@ -237,26 +271,63 @@ const getSangrurConstituencyFromText = async (text = '') => {
             }
         } catch (error) {
             const now = Date.now();
-            if (now - lastPunjabiTranslationWarningAt >= PUNJABI_TRANSLATION_WARNING_THROTTLE_MS) {
-                console.warn(`[GrievanceLocation] Punjabi translation failed for AC detection: ${error.message}`);
-                lastPunjabiTranslationWarningAt = now;
+            if (now - lastTeluguTranslationWarningAt >= TELUGU_TRANSLATION_WARNING_THROTTLE_MS) {
+                console.warn(`[GrievanceLocation] Telugu translation failed for AC detection: ${error.message}`);
+                lastTeluguTranslationWarningAt = now;
             }
         }
     }
 
     for (const candidate of candidates) {
-        const match = findSangrurAcInText(candidate);
+        const match = findMahbubnagarAcInText(candidate);
         if (match) return match;
     }
     return null;
 };
 
-const enrichWithSangrurConstituency = async (baseLocation = {}, text = '', options = {}) => {
-    if (!isSangrurTaggedLocation(baseLocation)) return baseLocation;
+const isStateCapitalLocation = (location = {}) => {
+    const city = String(location.city || '').toLowerCase();
+    const district = String(location.district || '').toLowerCase();
+    const keyword = String(location.keyword_matched || '').toLowerCase();
+    return (
+        city.includes('hyderabad') || city.includes('telangana') ||
+        district.includes('hyderabad') || district.includes('telangana') ||
+        keyword.includes('hyderabad') || keyword.includes('telangana')
+    );
+};
+
+const enrichWithMahbubnagarConstituency = async (baseLocation = {}, text = '', options = {}) => {
+    const keywordMatch = await getMahbubnagarConstituencyFromText(text);
+
+    // Explicit AC mention should always win over any fallback strategy.
+    if (keywordMatch) {
+        return {
+            city: baseLocation.city || keywordMatch.constituency,
+            district: baseLocation.district || MAHABUBNAGAR_AC_TO_DISTRICT[keywordMatch.constituency] || null,
+            constituency: keywordMatch.constituency,
+            keyword_matched: keywordMatch.matched,
+            lat: baseLocation.lat ?? null,
+            lng: baseLocation.lng ?? null,
+            confidence: Math.max(Number(baseLocation.confidence || 0), 0.9),
+            source: appendSourceTagOnce(baseLocation.source || 'keyword_match', 'mahabubnagar_ac_keyword')
+        };
+    }
+
+    // State-capital (Hyderabad/Telangana) grievances → round-robin to Mahabubnagar ACs
+    if (!isMahbubnagarTaggedLocation(baseLocation) && isStateCapitalLocation(baseLocation)) {
+        const location = { ...baseLocation };
+        // No specific AC → round-robin distribute
+        location.constituency = await getNextMahbubnagarAcByRoundRobin(options);
+        location.source = appendSourceTagOnce(location.source || '', 'mahabubnagar_ac_round_robin');
+        location.confidence = Math.max(Number(location.confidence || 0), 0.6);
+        return location;
+    }
+
+    if (!isMahbubnagarTaggedLocation(baseLocation)) return baseLocation;
 
     const location = {
-        city: baseLocation.city || 'Sangrur',
-        district: baseLocation.district || 'Sangrur',
+        city: baseLocation.city || 'Mahabubnagar',
+        district: baseLocation.district || 'Mahabubnagar',
         constituency: baseLocation.constituency || null,
         keyword_matched: baseLocation.keyword_matched || null,
         lat: baseLocation.lat ?? null,
@@ -265,30 +336,21 @@ const enrichWithSangrurConstituency = async (baseLocation = {}, text = '', optio
         source: baseLocation.source || 'location_service'
     };
 
-    const keywordMatch = await getSangrurConstituencyFromText(text);
-    if (keywordMatch) {
-        location.constituency = keywordMatch.constituency;
-        location.keyword_matched = keywordMatch.matched;
-        location.source = appendSourceTagOnce(location.source, 'sangrur_ac_keyword');
-        location.confidence = Math.max(Number(location.confidence || 0), 0.9);
-        return location;
-    }
-
-    const canonicalExisting = findCanonicalSangrurAc(location.constituency);
+    const canonicalExisting = findCanonicalMahbubnagarAc(location.constituency);
     if (canonicalExisting) {
         location.constituency = canonicalExisting;
         return location;
     }
 
-    location.constituency = await getNextSangrurAcByRoundRobin(options);
-    location.source = appendSourceTagOnce(location.source, 'sangrur_ac_round_robin');
+    location.constituency = await getNextMahbubnagarAcByRoundRobin(options);
+    location.source = appendSourceTagOnce(location.source, 'mahabubnagar_ac_round_robin');
     location.confidence = Math.max(Number(location.confidence || 0), 0.6);
     return location;
 };
 
 /**
  * LOCAL keyword-based location detection from text content.
- * Scans each word/phrase against ALL_PUNJAB_LOCATIONS set.
+ * Scans each word/phrase against ALL_TELANGANA_LOCATIONS set.
  * Returns { city, district, keyword_matched, confidence, source } or null.
  */
 const detectLocationFromText = (text) => {
@@ -322,9 +384,36 @@ const detectLocationFromText = (text) => {
     return null;
 };
 
+const detectLocationFromContent = async (text) => {
+    const directMatch = detectLocationFromText(text);
+    if (directMatch) return directMatch;
+
+    if (!text || !TELUGU_SCRIPT_REGEX.test(text)) return null;
+
+    try {
+        const translated = await translationService.translate(text, 'en', 'auto');
+        if (!translated || !translated.trim()) return null;
+
+        const translatedMatch = detectLocationFromText(translated);
+        if (!translatedMatch) return null;
+
+        return {
+            ...translatedMatch,
+            source: appendSourceTagOnce(translatedMatch.source, 'translated_keyword_match')
+        };
+    } catch (error) {
+        const now = Date.now();
+        if (now - lastTeluguTranslationWarningAt >= TELUGU_TRANSLATION_WARNING_THROTTLE_MS) {
+            console.warn(`[GrievanceLocation] Telugu translation failed for keyword detection: ${error.message}`);
+            lastTeluguTranslationWarningAt = now;
+        }
+        return null;
+    }
+};
+
 /**
  * Extract location from a grievance's text / user profile and persist it.
- * STEP 1: Try local keyword matching against Punjab location database (instant, no network).
+ * STEP 1: Try local keyword matching against Telangana location database (instant, no network).
  * STEP 2: If no keyword match, call the external location-extraction micro-service.
  * Non-blocking: failures are logged but never throw.
  */
@@ -333,9 +422,9 @@ const extractAndSaveLocation = async (grievanceId, text, postedBy = {}) => {
         if (!text || !text.trim()) return;
 
         // ── STEP 1: Local keyword-based detection (fast, no network) ──
-        const keywordResult = detectLocationFromText(text);
+        const keywordResult = await detectLocationFromContent(text);
         if (keywordResult) {
-            const locationWithConstituency = await enrichWithSangrurConstituency({
+            const locationWithConstituency = await enrichWithMahbubnagarConstituency({
                 city: keywordResult.city,
                 district: keywordResult.district,
                 constituency: null,
@@ -389,7 +478,7 @@ const extractAndSaveLocation = async (grievanceId, text, postedBy = {}) => {
         const results = res.data?.results || [];
         const loc = results.find(r => r.id === grievanceId);
         if (!loc || !loc.location_found) return;
-        const locationWithConstituency = await enrichWithSangrurConstituency({
+        const locationWithConstituency = await enrichWithMahbubnagarConstituency({
             city: loc.city || null,
             district: loc.district || null,
             constituency: loc.constituency || null,
@@ -421,17 +510,17 @@ const extractAndSaveLocation = async (grievanceId, text, postedBy = {}) => {
     }
 };
 
-const reprocessSangrurMappedGrievances = async ({
+const reprocessMahbubnagarMappedGrievances = async ({
     dryRun = true,
     limit = null,
 } = {}) => {
-    const acRegexes = SANGRUR_ACS.map((ac) => new RegExp(`^\\s*${escapeRegex(ac)}\\s*$`, 'i'));
+    const acRegexes = MAHABUBNAGAR_ACS.map((ac) => new RegExp(`^\\s*${escapeRegex(ac)}\\s*$`, 'i'));
     const filter = {
         is_active: true,
         $or: [
-            { 'detected_location.city': /sangrur/i },
-            { 'detected_location.district': /sangrur/i },
-            { 'detected_location.constituency': /sangrur/i },
+            { 'detected_location.city': /mahabubnagar|mahbubnagar/i },
+            { 'detected_location.district': /mahabubnagar|mahbubnagar/i },
+            { 'detected_location.constituency': /mahabubnagar|mahbubnagar/i },
             { 'detected_location.constituency': { $in: acRegexes } }
         ]
     };
@@ -454,9 +543,9 @@ const reprocessSangrurMappedGrievances = async ({
     const rrState = { nextIndex: 0 };
 
     if (dryRun) {
-        const settings = await GrievanceSettings.findOne({ id: 'grievance_settings' }).select({ sangrur_ac_rr_index: 1 }).lean();
-        const currentIndex = Number(settings?.sangrur_ac_rr_index || 0);
-        rrState.nextIndex = ((currentIndex % SANGRUR_ACS.length) + SANGRUR_ACS.length) % SANGRUR_ACS.length;
+        const settings = await GrievanceSettings.findOne({ id: 'grievance_settings' }).select({ mahabubnagar_ac_rr_index: 1 }).lean();
+        const currentIndex = Number(settings?.mahabubnagar_ac_rr_index || 0);
+        rrState.nextIndex = ((currentIndex % MAHABUBNAGAR_ACS.length) + MAHABUBNAGAR_ACS.length) % MAHABUBNAGAR_ACS.length;
     }
 
     for await (const grievance of cursor) {
@@ -476,7 +565,7 @@ const reprocessSangrurMappedGrievances = async ({
                 source: grievance?.detected_location?.source || null
             };
 
-            const after = await enrichWithSangrurConstituency(before, text, { dryRun, rrState });
+            const after = await enrichWithMahbubnagarConstituency(before, text, { dryRun, rrState });
             const changed = (
                 before.city !== after.city ||
                 before.district !== after.district ||
@@ -513,7 +602,7 @@ const reprocessSangrurMappedGrievances = async ({
             }
         } catch (error) {
             failed += 1;
-            console.warn(`[SangrurReprocess] Failed for grievance ${grievance?.id || 'unknown'}: ${error.message}`);
+            console.warn(`[MahbubnagarReprocess] Failed for grievance ${grievance?.id || 'unknown'}: ${error.message}`);
         }
     }
 
@@ -1376,6 +1465,7 @@ const fetchAllGrievances = async (startDate = null, endDate = null) => {
         const sources = await GrievanceSource.find({ is_active: true });
         let totalNew = 0;
 
+        // --- Source-based fetching (mentions via @handle) ---
         for (const source of sources) {
             const result = await upsertGrievancesForSource(source, startDate, endDate);
             totalNew += result.newCount;
@@ -1389,7 +1479,68 @@ const fetchAllGrievances = async (startDate = null, endDate = null) => {
             );
         }
 
-        return { newGrievances: totalNew };
+        // --- Keyword-based X/Twitter fetching ---
+        let keywordNew = 0;
+        try {
+            const keywords = await Keyword.find({ is_active: true });
+            if (keywords.length > 0) {
+                console.log(`[FetchAll][X-Keywords] Fetching tweets for ${keywords.length} active keywords`);
+                const seenIds = new Set();
+
+                for (const kw of keywords) {
+                    const rawKeyword = kw.keyword;
+                    // Generate variants: @base, #base, plain text
+                    const base = rawKeyword.trim().replace(/^[@#]+/, '').trim();
+                    const variants = base ? [...new Set([`@${base}`, `#${base}`, base])] : [rawKeyword.trim()];
+
+                    for (const variant of variants) {
+                        try {
+                            console.log(`[FetchAll][X-Keywords] Searching: "${variant}"`);
+                            const xTweets = await rapidApiXService.searchTweets(variant);
+                            console.log(`[FetchAll][X-Keywords] Found ${xTweets.length} for "${variant}"`);
+
+                            for (const tweet of xTweets) {
+                                const canonicalId = `x:keyword:${tweet.id}`;
+                                if (seenIds.has(canonicalId)) continue;
+                                seenIds.add(canonicalId);
+
+                                const post = {
+                                    tweet_id: canonicalId,
+                                    text: tweet.text || '',
+                                    url: tweet.url || `https://x.com/${tweet.author_handle}/status/${tweet.id}`,
+                                    created_at: tweet.created_at,
+                                    author: {
+                                        handle: tweet.author_handle || 'x_user',
+                                        display_name: tweet.author || tweet.author_handle || 'X User',
+                                        profile_image_url: tweet.author_avatar || '',
+                                        is_verified: tweet.verified || false,
+                                        follower_count: 0
+                                    },
+                                    media: tweet.media || [],
+                                    engagement: {
+                                        likes: parseInt(tweet.metrics?.like) || 0,
+                                        retweets: parseInt(tweet.metrics?.retweet) || 0,
+                                        replies: parseInt(tweet.metrics?.reply) || 0,
+                                        views: parseInt(tweet.metrics?.views) || 0,
+                                        quotes: parseInt(tweet.metrics?.quote) || 0
+                                    }
+                                };
+                                const created = await createGrievanceFromPost(post, 'x', rawKeyword);
+                                if (created) keywordNew++;
+                            }
+                        } catch (err) {
+                            console.error(`[FetchAll][X-Keywords] Error for "${variant}": ${err.message}`);
+                        }
+                    }
+                }
+                console.log(`[FetchAll][X-Keywords] Total new from keywords: ${keywordNew}`);
+            }
+        } catch (kwErr) {
+            console.error(`[FetchAll][X-Keywords] Keyword fetch failed: ${kwErr.message}`);
+        }
+
+        totalNew += keywordNew;
+        return { newGrievances: totalNew, fromSources: totalNew - keywordNew, fromKeywords: keywordNew };
     } catch (error) {
         throw error;
     }
@@ -2049,7 +2200,7 @@ module.exports = {
     getGrievanceStats,
     analyzeGrievanceContent,
     extractAndSaveLocation,
-    reprocessSangrurMappedGrievances,
+    reprocessMahbubnagarMappedGrievances,
     fetchKeywordGrievances,
     __private: {
         archiveMentionMediaForStorage,

@@ -22,7 +22,7 @@ const Login = () => {
       if (userData?.role === 'dial100') {
         navigate('/dial-100-incident-reporting');
       } else {
-        navigate('/punjab-map');
+        navigate('/telangana-map');
       }
     } catch (error) {
       // Error is handled by AuthContext
@@ -55,7 +55,7 @@ const Login = () => {
               />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-bold text-white tracking-wider uppercase">BLURA - SAGA FOR PUNJAB GOVERNMENT</h1>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-bold text-white tracking-wider uppercase">BLURA - SAGA FOR AP INTELLIGENCE</h1>
               <div className="flex items-center justify-center gap-2 mt-1.5 lg:mt-2">
                 <div className="h-px w-6 lg:w-8 bg-gradient-to-r from-transparent to-[hsl(43,96%,50%)]"></div>
                 <Shield className="h-3 w-3 lg:h-4 lg:w-4 text-[hsl(43,96%,50%)]" />

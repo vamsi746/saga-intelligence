@@ -43,7 +43,7 @@ const POIDetail = lazy(() => import('./pages/POI/POIDetail'));
 const AccessManagement = lazy(() => import('./pages/AccessManagement'));
 const DeepfakeAnalysis = lazy(() => import('./pages/Deepfake/DeepfakeAnalysis'));
 const Telegram = lazy(() => import('./pages/Telegram'));
-const PunjabMap = lazy(() => import('./pages/PunjabMap'));
+const TelanganaMap = lazy(() => import('./pages/TelanganaMap'));
 
 // Loading fallback
 const PageLoader = () => (
@@ -88,7 +88,7 @@ function App() {
                       </ProtectedRoute>
                     }
                   >
-                    <Route index element={<Navigate to="/punjab-map" replace />} />
+                    <Route index element={<Navigate to="/telangana-map" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="sources" element={<Sources />} />
                     <Route path="content" element={<ContentFeed />} />
@@ -121,7 +121,7 @@ function App() {
                     <Route path="person-of-interest/:id" element={<POIDetail />} />
                     <Route path="deepfake-analysis" element={<DeepfakeAnalysis />} />
                     <Route path="telegram" element={<Telegram />} />
-                    <Route path="punjab-map" element={<PunjabMap />} />
+                    <Route path="telangana-map" element={<TelanganaMap />} />
                     <Route path="deepfake/forensics" element={<DeepfakeAnalysis />} />
                     <Route path="help" element={<HelpGuide />} />
                   </Route>

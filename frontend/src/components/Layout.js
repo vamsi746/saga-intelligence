@@ -67,7 +67,7 @@ const Layout = () => {
   };
 
   const allNavigation = [
-    { name: 'Dashboard', href: '/punjab-map', icon: Globe },
+    { name: 'Dashboard', href: '/telangana-map', icon: Globe },
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Grievances', href: '/grievances', icon: MessageSquare },
     { name: 'Alerts', href: '/alerts', icon: AlertTriangle },
@@ -144,7 +144,7 @@ const Layout = () => {
                 <div className="absolute -bottom-0.5 -right-0.5 lg:-bottom-1 lg:-right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 rounded-full border-2 border-white"></div>
               </div>
               <div className="flex flex-col">
-                <h1 className="text-lg lg:text-2xl font-heading font-bold text-white tracking-wider uppercase">BLURA - SAGA FOR PUNJAB GOVERNMENT</h1>
+                <h1 className="text-lg lg:text-2xl font-heading font-bold text-white tracking-wider uppercase">BLURA - SAGA FOR AP INTELLIGENCE</h1>
                 <span className="hidden sm:block text-[10px] lg:text-xs text-[hsl(43,96%,70%)] font-medium tracking-widest uppercase">Sentiment and Goodwill Analysis</span>
               </div>
             </div>

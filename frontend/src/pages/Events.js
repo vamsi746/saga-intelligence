@@ -438,7 +438,7 @@ const Events = () => {
                   </div>
                   <div className="space-y-2">
                     <Label>Location</Label>
-                    <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Punjab" />
+                    <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Telangana" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
@@ -453,13 +453,13 @@ const Events = () => {
 
                   <Tabs defaultValue="te">
                     <TabsList className="grid grid-cols-3 w-full">
-                      <TabsTrigger value="te">Punjabi</TabsTrigger>
+                      <TabsTrigger value="te">Telugu</TabsTrigger>
                       <TabsTrigger value="hi">Hindi</TabsTrigger>
                       <TabsTrigger value="en">English</TabsTrigger>
                     </TabsList>
                     <TabsContent value="te" className="mt-3">
                       <Label>Keywords (comma or newline separated)</Label>
-                      <Textarea value={keywordsTe} onChange={(e) => setKeywordsTe(e.target.value)} rows={4} placeholder="e.g. ਚੋਣਾਂ, ਵੋਟ ..." />
+                      <Textarea value={keywordsTe} onChange={(e) => setKeywordsTe(e.target.value)} rows={4} placeholder="ఉదా: ఎన్నికలు, ఓటు ..." />
                     </TabsContent>
                     <TabsContent value="hi" className="mt-3">
                       <Label>Keywords (comma or newline separated)</Label>

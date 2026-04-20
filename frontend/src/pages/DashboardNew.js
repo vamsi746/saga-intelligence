@@ -20,7 +20,7 @@ const ManagedRibbonWidget = lazy(() => import('../components/dashboard/ManagedRi
 const TodaysEventsWidget = lazy(() => import('../components/dashboard/TodaysEventsWidget'));
 const Dial100FeedWidget = lazy(() => import('../components/dashboard/Dial100FeedWidget'));
 
-import PunjabMap from './PunjabMap';
+import TelanganaMap from './TelanganaMap';
 
 // Platform configurations
 const PLATFORMS = [
@@ -597,20 +597,20 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Sangrur Constituency — In-depth AC Map */}
+            {/* Kodangal Constituency — In-depth AC Map */}
             <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-1">
               <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 bg-green-100 rounded-lg">
                     <BarChart3 className="h-3.5 w-3.5 text-green-600" />
                   </div>
-                  <h3 className="text-[13px] font-semibold text-foreground">Sangrur Constituency</h3>
+                  <h3 className="text-[13px] font-semibold text-foreground">Kodangal Constituency</h3>
                 </div>
-                <span className="text-[10px] text-muted-foreground font-medium">CM Bhagwant Mann · 7 ACs</span>
+                <span className="text-[10px] text-muted-foreground font-medium">CM Revanth Reddy · Kodangal · 7 ACs</span>
               </div>
               <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
                 <div className="w-full h-[480px]">
-                  <PunjabMap embedded />
+                  <TelanganaMap embedded />
                 </div>
               </div>
             </Card>

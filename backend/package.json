@@ -7,8 +7,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint src/**/*.js",
-    "reprocess:sangrur:dry": "node scripts/reprocess_sangrur_ac.js --dry-run",
-    "reprocess:sangrur": "node scripts/reprocess_sangrur_ac.js --execute"
+    "reprocess:mahabubnagar:dry": "node scripts/reprocess_mahabubnagar_ac.js --dry-run",
+    "reprocess:mahabubnagar": "node scripts/reprocess_mahabubnagar_ac.js --execute"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.983.0",
