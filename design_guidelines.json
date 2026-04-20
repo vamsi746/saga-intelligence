@@ -1,0 +1,151 @@
+{
+  "identity": {
+    "name": "BLURA HUB",
+    "persona": "The Digital Watchtower",
+    "vibe": "Tactical, Vigilant, High-Precision, Enterprise-Grade",
+    "target_audience": "Government Agencies, Law Enforcement, Security Analysts"
+  },
+  "typography": {
+    "primary_font": "IBM Plex Sans",
+    "heading_font": "Chivo",
+    "mono_font": "JetBrains Mono",
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight",
+      "h2": "text-2xl font-semibold tracking-tight",
+      "h3": "text-xl font-semibold tracking-tight",
+      "body": "text-sm leading-relaxed",
+      "small": "text-xs font-medium text-muted-foreground",
+      "mono": "font-mono text-xs"
+    },
+    "imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');"
+    ]
+  },
+  "colors": {
+    "palette_name": "Tactical Slate",
+    "mode_strategy": "Light Mode Default (Tactical Light) with Dark Mode Toggle (Command Dark)",
+    "light": {
+      "background": "hsl(210, 40%, 98%)",
+      "foreground": "hsl(222, 47%, 11%)",
+      "card": "hsl(0, 0%, 100%)",
+      "card_foreground": "hsl(222, 47%, 11%)",
+      "popover": "hsl(0, 0%, 100%)",
+      "popover_foreground": "hsl(222, 47%, 11%)",
+      "primary": "hsl(221, 83%, 53%)",
+      "primary_foreground": "hsl(210, 40%, 98%)",
+      "secondary": "hsl(210, 40%, 96.1%)",
+      "secondary_foreground": "hsl(222, 47%, 11%)",
+      "muted": "hsl(210, 40%, 96.1%)",
+      "muted_foreground": "hsl(215.4, 16.3%, 46.9%)",
+      "accent": "hsl(210, 40%, 96.1%)",
+      "accent_foreground": "hsl(222, 47%, 11%)",
+      "destructive": "hsl(0, 84.2%, 60.2%)",
+      "destructive_foreground": "hsl(210, 40%, 98%)",
+      "border": "hsl(214.3, 31.8%, 91.4%)",
+      "input": "hsl(214.3, 31.8%, 91.4%)",
+      "ring": "hsl(221, 83%, 53%)"
+    },
+    "dark": {
+      "background": "hsl(222, 47%, 11%)",
+      "foreground": "hsl(210, 40%, 98%)",
+      "card": "hsl(222, 47%, 11%)",
+      "card_foreground": "hsl(210, 40%, 98%)",
+      "popover": "hsl(222, 47%, 11%)",
+      "popover_foreground": "hsl(210, 40%, 98%)",
+      "primary": "hsl(217, 91%, 60%)",
+      "primary_foreground": "hsl(222, 47%, 11%)",
+      "secondary": "hsl(217.2, 32.6%, 17.5%)",
+      "secondary_foreground": "hsl(210, 40%, 98%)",
+      "muted": "hsl(217.2, 32.6%, 17.5%)",
+      "muted_foreground": "hsl(215, 20.2%, 65.1%)",
+      "accent": "hsl(217.2, 32.6%, 17.5%)",
+      "accent_foreground": "hsl(210, 40%, 98%)",
+      "destructive": "hsl(0, 62.8%, 30.6%)",
+      "destructive_foreground": "hsl(210, 40%, 98%)",
+      "border": "hsl(217.2, 32.6%, 17.5%)",
+      "input": "hsl(217.2, 32.6%, 17.5%)",
+      "ring": "hsl(224.3, 76.3%, 48%)"
+    },
+    "risk_levels": {
+      "high": "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
+      "medium": "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+      "low": "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800"
+    }
+  },
+  "layout": {
+    "container": "max-w-[1600px] mx-auto p-6",
+    "grid_system": "The Control Room Grid",
+    "spacing": {
+      "section_gap": "gap-6",
+      "card_padding": "p-5",
+      "dense_padding": "p-3"
+    },
+    "radius": "rounded-md"
+  },
+  "components": {
+    "cards": {
+      "style": "border border-border bg-card shadow-sm hover:shadow-md transition-shadow duration-200",
+      "header": "border-b border-border/50 p-4 bg-muted/20"
+    },
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-medium",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      "ghost": "hover:bg-accent hover:text-accent-foreground",
+      "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+    },
+    "inputs": {
+      "style": "bg-background border-input focus:ring-2 focus:ring-ring focus:border-transparent"
+    },
+    "badges": {
+      "base": "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+    }
+  },
+  "assets": {
+    "icons": {
+      "library": "lucide-react",
+      "brand_library": "react-icons/fa6",
+      "usage": "Use Lucide for UI (AlertTriangle, Shield, Users, Activity). Use FontAwesome for Brands (FaXTwitter, FaYoutube)."
+    },
+    "images": {
+      "content_feed_mockups": [
+        {
+          "url": "https://images.unsplash.com/photo-1538269303765-025c0af244eb",
+          "alt": "Protest Crowd (High Risk Example)",
+          "category": "feed_content"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1640831816215-248c9112ca7c",
+          "alt": "Busy Street Crossing (Surveillance)",
+          "category": "feed_content"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1601186625663-85496455e394",
+          "alt": "CCTV Street View",
+          "category": "feed_content"
+        }
+      ],
+      "avatars": [
+        {
+          "url": "https://images.unsplash.com/photo-1708491191986-f7a710ee4675",
+          "alt": "Officer Sarah (Admin)",
+          "category": "user_avatar"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1573167869536-fc0e3afd9577",
+          "alt": "Analyst Jane",
+          "category": "user_avatar"
+        }
+      ]
+    }
+  },
+  "universal_guidelines": [
+    "Use 'Tactical Density': Avoid excessive whitespace found in marketing sites. This is a tool. Information density should be high but legible.",
+    "Status Indicators: Every list item in the feed MUST have a clear visual indicator of its risk level (Left border color or Badge).",
+    "No Gradients: Use flat, solid colors for reliability and clarity.",
+    "Data-Test-IDs: All interactive elements must have data-testid attributes (e.g., 'login-btn', 'alert-card-1').",
+    "Empty States: Never leave a blank screen. Use an icon + text for 'No Alerts Active' or 'No Sources Configured'.",
+    "Loading States: Use skeleton loaders that match the table/card layout exactly.",
+    "Error Handling: Use Sonner toasts for transient errors, and inline alerts for persistent configuration errors."
+  ],
+  "instructions_to_main_agent": "1. Install 'lucide-react', 'react-icons', 'recharts', 'clsx', 'tailwind-merge' if not present. 2. Update 'tailwind.config.js' with the colors provided in this JSON. 3. Create a 'Layout' component that handles the Sidebar and Topbar structure. 4. Use the 'IBM Plex Sans' font for body and 'Chivo' for headings. 5. Implement the Dashboard using the 'Control Room Grid' philosophy (dense, actionable)."
+}

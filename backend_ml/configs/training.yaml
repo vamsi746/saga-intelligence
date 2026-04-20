@@ -1,0 +1,18 @@
+model:
+  name: "xlm-roberta-base"
+  num_labels: 3
+
+training:
+  max_len: 128
+  batch_size: 16
+  num_epochs: 5
+  learning_rate: 5e-6
+  classifier_lr: 2e-4
+  weight_decay: 0.01
+  freeze_roberta_epochs: 1
+  output_dir: "artifacts/risk_model"
+
+paths:
+  train_data: "data/train.jsonl"
+  val_data: "data/val.jsonl"
+  save_dir: "artifacts/risk_model"

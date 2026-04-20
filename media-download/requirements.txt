@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+yt-dlp
+ffmpeg-python
+openai-whisper
+torch
+python-multipart
+pytubefix
