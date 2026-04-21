@@ -100,6 +100,33 @@ const FilterChip = ({ label, onClear }) => (
     </Badge>
 );
 
+const normalizeListPayload = (payload, preferredKeys = []) => {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object') return [];
+
+    const keyCandidates = [
+        ...preferredKeys,
+        'content',
+        'items',
+        'results',
+        'posts',
+        'sources',
+        'data'
+    ];
+
+    for (const key of keyCandidates) {
+        if (Array.isArray(payload[key])) return payload[key];
+    }
+
+    if (payload.data && typeof payload.data === 'object') {
+        for (const key of keyCandidates) {
+            if (Array.isArray(payload.data[key])) return payload.data[key];
+        }
+    }
+
+    return [];
+};
+
 const FacebookMonitor = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(false);
@@ -317,8 +344,12 @@ const FacebookMonitor = () => {
                 api.get('/sources?platform=facebook'),
                 api.get('/content?platform=facebook')
             ]);
-            setSources(srcRes.data);
-            setPosts(postsRes.data);
+
+            const normalizedSources = normalizeListPayload(srcRes.data, ['sources']);
+            const normalizedPosts = normalizeListPayload(postsRes.data, ['content', 'posts']);
+
+            setSources(normalizedSources);
+            setPosts(normalizedPosts);
             if (!selectedSource) toast.success('Facebook data refreshed');
         } catch (error) {
             console.error('Error fetching Facebook data:', error);
