@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ShieldAlert, CalendarDays, Globe, Search, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, CalendarDays, Globe, Search, ArrowLeft, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -9,16 +9,16 @@ import { Input } from '../components/ui/input';
 const ARTICLES = [
   {
     id: 'dw-001',
-    title: 'Thread discussing campaign smear package targeting Revanth Reddy',
+    title: 'Narrative package targeting Revanth Reddy vs BRS election framing',
     source: 'onion forum mirror',
     url: 'http://rvrtnarrative5x2k3dw.onion/thread/001',
     category: 'Political Narrative',
     risk: 'high',
     actor: 'tg_ops_cell',
-    keyword: 'Revanth Reddy',
+    keyword: 'Revanth Reddy, Telangana BRS',
     location: 'Hyderabad',
     firstSeen: '2026-04-21T02:35:00Z',
-    summary: 'A closed thread advertises coordinated message packs aimed at discrediting Revanth Reddy ahead of district events.',
+    summary: 'A closed thread advertises coordinated message packs that try to polarize Revanth-vs-BRS narratives ahead of district events.',
     fullArticle: `Executive Summary
     A high-engagement discussion thread on an onion mirror documented a coordinated effort to shape negative political sentiment around Revanth Reddy. The discussion was not limited to opinion sharing; it included operational sequencing, posting templates, and a content-amplification model that appears optimized for short-cycle social media spikes.
 
@@ -35,7 +35,13 @@ const ARTICLES = [
     The thread showed repeat participation patterns associated with prior coordinated political discourse activity. Linguistic overlap and recurring operational language suggest this was not a one-off exchange, but part of a structured influence workflow.
 
     Risk Relevance
-    This activity indicates deliberate narrative manipulation against a named political individual with explicit planning around timing, message framing, and multi-account amplification. The combination of campaign-aware scheduling and evasion guidance elevates this from general chatter to a credible coordination signal.`
+    This activity indicates deliberate narrative manipulation against a named political individual with explicit planning around timing, message framing, and multi-account amplification. The combination of campaign-aware scheduling and evasion guidance elevates this from general chatter to a credible coordination signal.`,
+    referenceLinks: [
+      {
+        label: 'NDTV: Telangana Results 2023 (Congress 64, BRS 39)',
+        url: 'https://www.ndtv.com/india-news/telangana-election-results-2023-live-updates-counting-of-votes-to-begin-at-8-am-4623658'
+      }
+    ]
   },
   {
     id: 'dw-002',
@@ -45,10 +51,10 @@ const ARTICLES = [
     category: 'Data Leak',
     risk: 'critical',
     actor: 'data_broker_9',
-    keyword: 'Revanth Reddy',
+    keyword: 'Revanth Reddy, Telangana BRS',
     location: 'Warangal',
     firstSeen: '2026-04-20T19:10:00Z',
-    summary: 'Post claims access to politically segmented contact data tagged with references to Revanth Reddy campaign circles.',
+    summary: 'Post claims access to politically segmented contact data tagged with references to Revanth Reddy and BRS campaign circles.',
     fullArticle: `Executive Summary
     An encrypted board repost advertised a dataset described as a voter-contact spreadsheet with district segmentation and political profiling fields. The seller positioned the file as operationally useful for targeted messaging and campaign-adjacent influence activity.
 
@@ -65,7 +71,13 @@ const ARTICLES = [
     The seller account identifier has posting overlaps with prior broker-style listings involving phone databases and locality-coded records. Temporal proximity between this listing and nearby political event dates strengthens the hypothesis of tactical release timing.
 
     Risk Relevance
-    The signal is high severity due to possible data leakage coupled with clear evidence of operational targeting discussions. The thread reflects not just data trade but direct intent to weaponize segmented contact information for political narrative influence.`
+    The signal is high severity due to possible data leakage coupled with clear evidence of operational targeting discussions. The thread reflects not just data trade but direct intent to weaponize segmented contact information for political narrative influence.`,
+    referenceLinks: [
+      {
+        label: 'Reuters: 815 million records claim on dark web (reported 2023)',
+        url: 'https://www.reuters.com/world/india/indias-covid-19-test-details-815-million-people-being-sold-dark-web-us-2023-10-30/'
+      }
+    ]
   },
   {
     id: 'dw-003',
@@ -78,7 +90,7 @@ const ARTICLES = [
     keyword: 'Revanth Reddy',
     location: 'Nizamabad',
     firstSeen: '2026-04-19T11:50:00Z',
-    summary: 'Document outlines timing windows and hashtag sequences targeting pro and anti Revanth Reddy discourse.',
+    summary: 'Document outlines timing windows and hashtag sequences targeting pro and anti Revanth Reddy and BRS discourse.',
     fullArticle: `Executive Summary
     A relay-board planning document detailed a phased amplification framework around Telangana political hashtags, with explicit references to pro and anti Revanth Reddy discourse streams. The document reads as an operational playbook rather than informal commentary.
 
@@ -95,7 +107,13 @@ const ARTICLES = [
     Coordinated hashtag pressure can distort organic discussion velocity, push misleading frames into local information ecosystems, and increase perceived consensus around synthetic narratives. Even medium-scale execution can shape media pickup decisions during sensitive political windows.
 
     Risk Relevance
-    This source indicates coordinated influence behavior with mature tactic design, including suppression avoidance and narrative reinforcement methods. Severity is medium due to partial execution evidence, but operational intent is clear and repeatable.`
+    This source indicates coordinated influence behavior with mature tactic design, including suppression avoidance and narrative reinforcement methods. Severity is medium due to partial execution evidence, but operational intent is clear and repeatable.`,
+    referenceLinks: [
+      {
+        label: 'Mint: TRS renamed to BRS and national push context',
+        url: 'https://www.livemint.com/politics/trs-renamed-as-bharat-rashtra-samithi-as-telangana-cm-kcr-eyes-national-politics-11664956919064.html'
+      }
+    ]
   },
   {
     id: 'dw-004',
@@ -105,7 +123,7 @@ const ARTICLES = [
     category: 'Forgery / Disinformation',
     risk: 'high',
     actor: 'forge_merchant_x',
-    keyword: 'Revanth Reddy',
+    keyword: 'Revanth Reddy, Telangana BRS',
     location: 'Karimnagar',
     firstSeen: '2026-04-18T07:20:00Z',
     summary: 'Seller advertises fabricated evidence packs intended for rapid spread in political argument cycles.',
@@ -125,7 +143,13 @@ const ARTICLES = [
     Fabricated screenshot kits reduce technical barriers for disinformation actors and enable rapid reputational damage at scale. In political contexts, forged visuals can trigger reactive media cycles before verification catches up, extending the lifetime of false claims.
 
     Risk Relevance
-    This listing indicates active commercialization of disinformation tooling with direct applicability to local political narratives. Severity remains high because packaging quality and distribution guidance materially increase campaign execution capability.`
+    This listing indicates active commercialization of disinformation tooling with direct applicability to local political narratives. Severity remains high because packaging quality and distribution guidance materially increase campaign execution capability.`,
+    referenceLinks: [
+      {
+        label: 'Indian Express: Doctored video case and political misinformation context',
+        url: 'https://indianexpress.com/article/cities/delhi/amit-shah-doctored-video-delhi-police-summons-revanth-reddy-9297050/'
+      }
+    ]
   },
   {
     id: 'dw-005',
@@ -135,7 +159,7 @@ const ARTICLES = [
     category: 'Threat Watch',
     risk: 'medium',
     actor: 'observer_13',
-    keyword: 'Revanth Reddy',
+    keyword: 'Revanth Reddy, Telangana BRS',
     location: 'Mahabubnagar',
     firstSeen: '2026-04-17T22:05:00Z',
     summary: 'Room participants discuss crowd movement and disruption rumors around rallies mentioning Revanth Reddy.',
@@ -155,7 +179,50 @@ const ARTICLES = [
     During high-density public gatherings, misinformation about routes or safety conditions can increase panic risk, fragment crowd behavior, and strain local response coordination. Even limited rumor spread can create measurable friction around event management.
 
     Risk Relevance
-    The source indicates event-adjacent disruption planning through narrative manipulation rather than direct physical coordination. Severity is medium, but timing sensitivity and recurring behavior patterns warrant active monitoring during rally windows.`
+    The source indicates event-adjacent disruption planning through narrative manipulation rather than direct physical coordination. Severity is medium, but timing sensitivity and recurring behavior patterns warrant active monitoring during rally windows.`,
+    referenceLinks: [
+      {
+        label: 'NDTV: Revanth and BRS contest environment in Telangana results cycle',
+        url: 'https://www.ndtv.com/india-news/telangana-election-results-2023-live-updates-counting-of-votes-to-begin-at-8-am-4623658'
+      }
+    ]
+  },
+  {
+    id: 'dw-006',
+    title: 'Publicly reported dark-web leak claim linked to mass India records sale chatter',
+    source: 'open-source media synthesis',
+    url: 'https://intel-feed.local/briefs/india-mass-record-claim-2023',
+    category: 'Data Leak (Public Reporting)',
+    risk: 'high',
+    actor: 'pwn0001 (claimed seller alias)',
+    keyword: 'Telangana BRS, Revanth Reddy, voter targeting',
+    location: 'Hyderabad / Telangana',
+    firstSeen: '2026-04-16T15:15:00Z',
+    summary: 'Public reporting described a dark-web claim about large Indian datasets, relevant for targeted political messaging risk in Telangana ecosystems.',
+    fullArticle: `Executive Summary
+    Multiple media outlets in 2023 reported claims that a very large Indian dataset was being advertised for sale on dark-web-adjacent forums. While attribution and full authenticity remained contested in public reporting, the incident became a high-signal example of how large-scale data exposure claims can be repurposed for political targeting operations.
+
+    Why It Matters for Revanth/BRS Monitoring
+    In Telangana political cycles, actors often segment messaging around constituency-level identity, language preference, and issue sensitivity. Any leak claim involving large contact datasets can increase the operational capacity for spam campaigns, synthetic volunteer blasts, impersonation attempts, and narrative pressure against both ruling and opposition political entities.
+
+    Validation Position
+    This record intentionally tracks only publicly reported information. It does not include leaked personal data, direct purchase links, or exploit instructions. Analysts should treat forum claims as unverified until corroborated by official investigation outcomes and independent technical validation.
+
+    Monitoring Implications
+    The practical risk is not only data theft itself but downstream weaponization: coordinated disinformation forwarding, targeted robocalls, and engineered outrage waves synchronized with high-visibility speeches or polling windows.
+
+    Risk Relevance
+    Even without direct access to leaked datasets, the public claim environment is enough to trigger political influence and intimidation attempts. This item is therefore retained as a high-priority watch entry for campaign-period abuse patterns in Telangana.`,
+    referenceLinks: [
+      {
+        label: 'Reuters: report on 815 million-record claim sold on dark web',
+        url: 'https://www.reuters.com/world/india/indias-covid-19-test-details-815-million-people-being-sold-dark-web-us-2023-10-30/'
+      },
+      {
+        label: 'NDTV: Telangana 2023 result context for Revanth vs BRS monitoring',
+        url: 'https://www.ndtv.com/india-news/telangana-election-results-2023-live-updates-counting-of-votes-to-begin-at-8-am-4623658'
+      }
+    ]
   }
 ];
 
@@ -169,6 +236,11 @@ const PREBUILT_QUERIES = [
     id: 'influence-campaign',
     label: 'Coordinated Influence Campaigns',
     match: ['narrative', 'amplification', 'hashtag', 'influence']
+  },
+  {
+    id: 'revanth-brs-watch',
+    label: 'Revanth vs BRS Narrative Watch',
+    match: ['revanth', 'brs', 'kcr', 'telangana', 'narrative']
   },
   {
     id: 'event-disruption',
@@ -264,6 +336,7 @@ const DarkWebSearch = () => {
 
       {isHome ? (
         <div className="space-y-4 animate-in fade-in duration-200">
+
           <div className="relative">
             <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
@@ -346,6 +419,27 @@ const DarkWebSearch = () => {
                 <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-7">
                   {item.fullArticle}
                 </div>
+
+                {Array.isArray(item.referenceLinks) && item.referenceLinks.length > 0 && (
+                  <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                    <div className="font-semibold mb-2">Public References</div>
+                    <ul className="space-y-1">
+                      {item.referenceLinks.map((ref) => (
+                        <li key={`${item.id}-${ref.url}`}>
+                          <a
+                            href={ref.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-sky-700"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {ref.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <footer className="pt-1 flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className={riskClass(item.risk)}>{item.risk.toUpperCase()}</Badge>
