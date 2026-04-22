@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { ShieldAlert, CalendarDays, Globe, Search, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -194,6 +195,7 @@ const serialize = (item) => [
 ].join(' ').toLowerCase();
 
 const DarkWebSearch = () => {
+  const navigate = useNavigate();
   const [activeQueryId, setActiveQueryId] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -242,9 +244,22 @@ const DarkWebSearch = () => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <ShieldAlert className="h-5 w-5 text-violet-600" />
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Dark Web Search</h1>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="h-5 w-5 text-violet-600" />
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Dark Web Search</h1>
+        </div>
+        {isHome && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/analysis-tools')}
+            className="shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Analysis Tools
+          </Button>
+        )}
       </div>
 
       {isHome ? (
