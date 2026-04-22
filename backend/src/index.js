@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const { startMonitoring } = require('./services/monitorService');
@@ -11,10 +10,14 @@ const User = require('./models/User');
 const Settings = require('./models/Settings');
 const Source = require('./models/Source');
 const Content = require('./models/Content');
+const Report = require('./models/Report');
 const GrievanceSource = require('./models/GrievanceSource');
+const SearchHistory = require('./models/SearchHistory');
 const { google } = require('googleapis');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { seedRecurringEvents } = require('./controllers/masterCalendarController');
+const { syncCalendarToEvents } = require('./services/calendarEventSyncService');
 const fs = require('fs');
 
 const app = express();
@@ -24,10 +27,9 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
-  origin: true,
+  origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) : '*',
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning']
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'x-requested-with']
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -62,26 +64,12 @@ app.use('/api/criticism', require('./routes/criticismRoutes'));
 app.use('/api/grievance-workflow', require('./routes/grievanceWorkflowRoutes'));
 app.use('/api/query-workflow', require('./routes/queryRoutes'));
 app.use('/api/suggestion', require('./routes/suggestionRoutes'));
+app.use('/api/suggestions', require('./routes/suggestionRoutes'));
 app.use('/api/policies', require('./routes/policyRoutes'));
 app.use('/api/templates', require('./routes/templatesRoutes'));
 app.use('/api/poi', require('./routes/poiRoutes'));
 app.use('/api/telegram', require('./routes/telegramRoutes'));
-
-// Proxy for Location Service (to share ngrok tunnel)
-app.post('/api/location-extraction/:path*', async (req, res) => {
-  try {
-    const targetUrl = `${process.env.LOCATION_SERVICE_URL}/api/${req.params.path}${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
-    const response = await axios({
-      method: 'post',
-      url: targetUrl,
-      data: req.body,
-      headers: { 'Content-Type': 'application/json' }
-    });
-    res.json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
+app.use('/api/master-calendar', require('./routes/masterCalendarRoutes'));
 
 
 app.get('/api/verify-v2', (req, res) => res.json({ status: 'ok', version: 'v2-diagnostic', timestamp: new Date() }));
@@ -109,7 +97,7 @@ const createDefaultAdmin = async () => {
         email: adminEmail,
         password: hashedPassword,
         full_name: 'System Administrator',
-        role: 'super_admin'
+        role: 'superadmin'
       });
       //console.log('Default admin user created: admin@blurahub.com / admin123');
     }
@@ -237,65 +225,163 @@ const fixIndexes = async () => {
   }
 };
 
-// Grievance Auto-Fetch Scheduler - runs every 10 minutes
-const GRIEVANCE_FETCH_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
+const ensureSearchHistoryIndexes = async () => {
+  try {
+    const indexes = await SearchHistory.collection.indexes();
+    const desiredTextIndexName = 'user_id_1_query_text_results_search_text_text';
+
+    for (const idx of indexes) {
+      const hasTextKey = Object.values(idx.key || {}).includes('text');
+      if (!hasTextKey) continue;
+
+      const isDesired = idx.name === desiredTextIndexName;
+      if (!isDesired) {
+        try {
+          await SearchHistory.collection.dropIndex(idx.name);
+          console.log(`[SearchHistory] Dropped legacy text index: ${idx.name}`);
+        } catch (dropErr) {
+          console.warn(`[SearchHistory] Could not drop index ${idx.name}: ${dropErr.message}`);
+        }
+      }
+    }
+
+    await SearchHistory.createIndexes();
+    console.log('[SearchHistory] Indexes ensured');
+  } catch (error) {
+    console.error('[SearchHistory] Failed to ensure indexes:', error.message);
+  }
+};
+
+const ensureReportIndexes = async () => {
+  try {
+    await Report.createIndexes();
+    console.log('[Report] Indexes ensured');
+  } catch (error) {
+    console.error('[Report] Failed to ensure indexes:', error.message);
+  }
+};
+
+const buildSearchHistoryResultsText = (results) => {
+  if (!Array.isArray(results) || results.length === 0) return '';
+
+  const snippets = [];
+  for (const item of results.slice(0, 300)) {
+    if (!item || typeof item !== 'object') continue;
+
+    const parts = [
+      item.text,
+      item.title,
+      item.description,
+      item.author,
+      item.author_handle,
+      item.channelTitle,
+      item.screen_name,
+      item.name,
+      item.url,
+      item.content_url
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (parts.length > 0) snippets.push(parts.join(' '));
+  }
+
+  return snippets.join(' ').slice(0, 20000).toLowerCase();
+};
+
+const backfillSearchHistoryResultsText = async () => {
+  try {
+    const docs = await SearchHistory.find({
+      $or: [
+        { results_search_text: { $exists: false } },
+        { results_search_text: '' }
+      ]
+    })
+      .select('_id results')
+      .limit(2000)
+      .lean();
+
+    if (!docs.length) return;
+
+    const bulkOps = docs.map((doc) => ({
+      updateOne: {
+        filter: { _id: doc._id },
+        update: { $set: { results_search_text: buildSearchHistoryResultsText(doc.results) } }
+      }
+    }));
+
+    if (bulkOps.length > 0) {
+      await SearchHistory.bulkWrite(bulkOps, { ordered: false });
+      console.log(`[SearchHistory] Backfilled results_search_text for ${bulkOps.length} records`);
+    }
+  } catch (error) {
+    console.error('[SearchHistory] Backfill failed:', error.message);
+  }
+};
+
+// Grievance Auto-Fetch Scheduler - interval driven by api_config.grievances
 let grievanceSchedulerRunning = false;
 
 const startGrievanceScheduler = () => {
-  //console.log('[Grievance Scheduler] Starting auto-fetch every 10 minutes...');
-
   // Run immediately on startup (after a small delay to let everything initialize)
   setTimeout(async () => {
     await runGrievanceFetch();
   }, 30000); // 30 second delay on startup
 
-  // Then run every 10 minutes
-  setInterval(async () => {
-    await runGrievanceFetch();
-  }, GRIEVANCE_FETCH_INTERVAL);
+  // Then run on a dynamic interval loop
+  const scheduleNext = async () => {
+    let intervalMs = 60 * 60 * 1000; // default 60 min
+    try {
+      const settings = await Settings.findOne({ id: 'global_settings' });
+      // Use the smaller of the two platform intervals (x, facebook)
+      const xMin = settings?.api_config?.grievances?.x || 60;
+      const fbMin = settings?.api_config?.grievances?.facebook || 60;
+      intervalMs = Math.min(xMin, fbMin) * 60 * 1000;
+    } catch (_) { /* use default */ }
+    setTimeout(async () => {
+      await runGrievanceFetch();
+      scheduleNext();
+    }, intervalMs);
+  };
+  scheduleNext();
 };
 
 const runGrievanceFetch = async () => {
   // Prevent concurrent runs
   if (grievanceSchedulerRunning) {
-    //console.log('[Grievance Scheduler] Previous fetch still running, skipping...');
     return;
   }
 
   try {
     grievanceSchedulerRunning = true;
 
-    // Check if there are any active grievance sources
-    const activeSources = await GrievanceSource.countDocuments({ is_active: true });
-    if (activeSources === 0) {
-      //console.log('[Grievance Scheduler] No active grievance sources configured, skipping fetch');
+    // Check if grievances are enabled in api_config
+    const settings = await Settings.findOne({ id: 'global_settings' });
+    if (settings?.api_config?.grievances?.enabled === false) {
       return;
     }
 
-    //console.log(`[Grievance Scheduler] Auto-fetching grievances for ${activeSources} active sources...`);
-    // Fetch grievances for today (no date filter = recent tweets)
+    // Check if there are any active grievance sources
+    const activeSources = await GrievanceSource.countDocuments({ is_active: true });
+    if (activeSources === 0) {
+      return;
+    }
+
+    // Fetch grievances for today
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
     const result = await grievanceService.fetchAllGrievances(todayStr, todayStr);
-    //console.log(`[Grievance Scheduler] Auto-fetch complete: ${result.newGrievances} new grievances found`);
-
-    // Also fetch keyword-based content from Facebook, Instagram, YouTube
-    try {
-      const kwResult = await grievanceService.fetchKeywordGrievances();
-      //console.log(`[Grievance Scheduler] Keyword fetch complete: ${kwResult.newGrievances} new from keywords`);
-    } catch (kwErr) {
-      //console.error('[Grievance Scheduler] Keyword fetch error:', kwErr.message);
-    }
 
   } catch (error) {
-    //console.error('[Grievance Scheduler] Error during auto-fetch:', error.message);
+    console.error('[Grievance Scheduler] Error during auto-fetch:', error.message);
   } finally {
     grievanceSchedulerRunning = false;
   }
 };
 
-// ─── Content Availability Checker (runs every 6 hours) ──────────────────────
+// ─── Content Availability Checker ──────────────────────────────────────────
 let availabilityCheckerRunning = false;
 
 const startAvailabilityChecker = () => {
@@ -340,9 +426,18 @@ const startServer = async () => {
 
   // Fix indexes
   await fixIndexes();
+  await ensureReportIndexes();
+  await ensureSearchHistoryIndexes();
+  await backfillSearchHistoryResultsText();
 
   // Seed default velocity alert thresholds
   await seedDefaultThresholds();
+
+  // Master calendar seed disabled — events are created manually only
+  // await seedRecurringEvents();
+
+  // Auto-creation from master calendar disabled — events are now created manually only
+  // await syncCalendarToEvents();
 
   // Start Monitoring Service OR temp content processor (engine mode)
   const useEngine = String(process.env.USE_ENGINE || 'false').toLowerCase() === 'true';
@@ -361,8 +456,16 @@ const startServer = async () => {
     console.log('[Server] USE_ENGINE=true -> skipping backend Grievance Auto-Fetch (handled by engine)');
   }
 
-  // Start Content Availability Checker (every 6 hours)
+  // Start Content Availability Checker
   startAvailabilityChecker();
+
+  // Retweet Sync Scheduler — DISABLED (now on-demand via Frequent Engagers button)
+  // try {
+  //   const { startRetweetSyncScheduler } = require('./services/retweetNetworkService');
+  //   startRetweetSyncScheduler();
+  // } catch (err) {
+  //   console.warn('[Server] Could not initialize Retweet Sync Scheduler:', err.message);
+  // }
 
   // Start Telegram Auto-Sync/Scrape only in legacy mode.
   if (!useEngine) {

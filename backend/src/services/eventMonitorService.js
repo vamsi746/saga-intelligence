@@ -1,101 +1,131 @@
 const Event = require('../models/Event');
 const Content = require('../models/Content');
-const Alert = require('../models/Alert');
-const Comment = require('../models/Comment');
-const Keyword = require('../models/Keyword');
 
 const youtubeService = require('./youtube.service');
 const rapidApiXService = require('./rapidApiXService');
 const rapidApiFacebookService = require('./rapidApiFacebookService');
-const { analyzeContent, analyzeComment } = require('./analysisService');
+const rapidApiInstagramService = require('./rapidApiInstagramService');
+const { archiveTwitterMedia, archiveContentMedia } = require('./contentS3Service');
 
 const normalizeText = (text) => String(text || '').toLowerCase();
+const squeezeWhitespace = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+
+const formatQueryTerm = (term) => {
+  const t = squeezeWhitespace(term);
+  if (!t) return '';
+  if (t.startsWith('#') || t.startsWith('@')) return t;
+  return t.includes(' ') ? `"${t}"` : t;
+};
+
+const normalizeEventKeywords = (event) =>
+  (event.keywords || [])
+    .map((k) => (typeof k === 'string' ? k : k.keyword))
+    .map((k) => squeezeWhitespace(k))
+    .filter(Boolean);
+
+const uniqueById = (items = []) => {
+  const map = new Map();
+  for (const item of items) {
+    const id = String(item?.id || '').trim();
+    if (!id) continue;
+    if (!map.has(id)) map.set(id, item);
+  }
+  return Array.from(map.values());
+};
 
 const nowUtc = () => new Date();
 
 const getActiveEvents = async () => {
-  const now = nowUtc();
-  const events = await Event.find({ status: { $ne: 'archived' } }).sort({ start_date: 1 });
-  return events.filter((e) => now >= e.start_date && now <= e.end_date);
+  // Only return events the user has explicitly set to 'active' (via Resume)
+  const events = await Event.find({ status: 'active' }).sort({ start_date: 1 });
+  return events;
 };
 
+// Auto-archive disabled — all status transitions are manual
 const autoArchiveEndedEvents = async () => {
-  const now = nowUtc();
-  const ended = await Event.find({
-    status: { $ne: 'archived' },
-    auto_archive: true,
-    end_date: { $lt: now }
-  });
-
-  for (const event of ended) {
-    event.status = 'archived';
-    event.archived_at = now;
-    await event.save();
-  }
-
-  return { archived: ended.length };
+  return { archived: 0 };
 };
 
-const buildEventQuery = (event) => {
-  const parts = [];
-  if (event.name) parts.push(event.name);
-  if (event.location) parts.push(event.location);
+const buildEventQueries = (event) => {
+  const queries = [];
+  const keywords = normalizeEventKeywords(event);
 
-  const keywords = (event.keywords || [])
-    .map((k) => (typeof k === 'string' ? k : k.keyword))
-    .filter(Boolean);
-
-  // Keep query short; RapidAPI/X and YouTube search degrade on overly long strings.
+  // Search each keyword individually (requested behavior).
   if (keywords.length > 0) {
-    parts.push(keywords.slice(0, 6).join(' OR '));
+    for (const keyword of keywords.slice(0, 12)) {
+      const term = formatQueryTerm(keyword);
+      if (term) queries.push(term);
+    }
   }
 
-  return parts.filter(Boolean).join(' ');
+  // Fallback for events with no keyword config.
+  if (queries.length === 0 && event.name) {
+    const nameTerm = formatQueryTerm(event.name);
+    if (nameTerm) queries.push(nameTerm);
+  }
+
+  // Secondary fallback.
+  if (queries.length === 0 && event.location) {
+    const locationTerm = formatQueryTerm(event.location);
+    if (locationTerm) queries.push(locationTerm);
+  }
+
+  return Array.from(new Set(queries)).filter(Boolean);
 };
 
-const computeEventThresholds = (settings, event) => {
-  const globalHigh = settings?.high_risk_threshold ?? settings?.risk_threshold_high ?? 70;
-  const globalMedium = settings?.medium_risk_threshold ?? settings?.risk_threshold_medium ?? 40;
+const normalizeForKeywordMatch = (text) =>
+  squeezeWhitespace(String(text || '').toLowerCase());
 
-  // Apply lower thresholds during active events by default.
-  const loweredHigh = Math.max(0, globalHigh - 10);
-  const loweredMedium = Math.max(0, globalMedium - 10);
+const keywordMatchesText = (keyword, text) => {
+  const k = normalizeForKeywordMatch(keyword);
+  if (!k) return false;
+  if (!text) return false;
 
-  return {
-    high: event?.high_risk_threshold ?? loweredHigh,
-    medium: event?.medium_risk_threshold ?? loweredMedium
-  };
+  // Keep hashtag matching strict, everything else relaxed for multilingual text.
+  if (k.startsWith('#') || k.startsWith('@')) {
+    return text.includes(k);
+  }
+  return text.includes(k);
 };
 
-const mergeKeywords = (globalKeywordDocs, event) => {
-  const merged = [...(globalKeywordDocs || [])];
+const filterTweetsByEventRelevance = (tweets, event) => {
+  const keywords = normalizeEventKeywords(event);
+  if (keywords.length === 0) return tweets;
 
-  const eventKeywords = (event?.keywords || [])
-    .map((k) => {
-      if (!k) return null;
-      const keyword = typeof k === 'string' ? k : k.keyword;
-      if (!keyword) return null;
-      return {
-        keyword: String(keyword).trim(),
-        category: 'other',
-        language: k.language || 'all',
-        weight: 10
-      };
-    })
-    .filter((k) => k && k.keyword);
-
-  merged.push(...eventKeywords);
-
-  // Deduplicate by lower-cased keyword
-  const seen = new Set();
-  return merged.filter((k) => {
-    const key = normalizeText(k.keyword);
-    if (!key) return false;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  return (tweets || []).filter((t) => {
+    const text = normalizeForKeywordMatch(t?.text || '');
+    if (!text) return false;
+    return keywords.some((keyword) => keywordMatchesText(keyword, text));
   });
 };
+
+const filterPostsByEventRelevance = (posts, event, getText) => {
+  const keywords = normalizeEventKeywords(event);
+  if (keywords.length === 0) return posts || [];
+
+  return (posts || []).filter((post) => {
+    const text = normalizeForKeywordMatch(getText(post));
+    if (!text) return false;
+    return keywords.some((keyword) => keywordMatchesText(keyword, text));
+  });
+};
+
+const fetchUniqueByQueries = async (queries, fetcher) => {
+  const merged = [];
+  for (const query of queries) {
+    try {
+      const batch = await fetcher(query);
+      if (Array.isArray(batch) && batch.length > 0) {
+        merged.push(...batch);
+      }
+    } catch (error) {
+      console.warn(`[EventMonitor] Query failed "${query}": ${error.message}`);
+    }
+  }
+  return uniqueById(merged);
+};
+
+
 
 const upsertEventContent = async ({ eventId, platform, contentId, payload }) => {
   const existing = await Content.findOne({ platform, content_id: contentId });
@@ -163,53 +193,15 @@ const upsertEventContent = async ({ eventId, platform, contentId, payload }) => 
   return { content: existing, isNew: false };
 };
 
-const maybeCreatePriorityAlert = async ({ event, content, analysis, analysisData, reason }) => {
-  if (!analysis && !analysisData) return null;
-
-  const effective = analysisData || analysis;
-
-  const shouldAlert = ['MEDIUM', 'HIGH'].includes(String(effective.risk_level || '').toUpperCase());
-  if (!shouldAlert) return null;
-
-  const existing = await Alert.findOne({ content_id: content.id, event_id: event.id });
-  if (existing) return existing;
-
-  const riskLevel = String(effective.risk_level || '').toUpperCase() === 'HIGH' ? 'high' : 'medium';
-
-  return await Alert.create({
-    content_id: content.id,
-    analysis_id: analysis.id,
-    event_id: event.id,
-    risk_level: riskLevel,
-    title: `Event Priority: ${event.name}`,
-    description: effective.explanation || 'Event-related risk signal detected.',
-    threat_details: {
-      intent: effective.intent || 'Unknown',
-      reasons: effective.reasons || [],
-      highlights: effective.highlights || [],
-      risk_score: effective.risk_score || 0,
-      confidence: effective.confidence || 0
-    },
-    violated_policies: effective.violated_policies || [],
-    legal_sections: effective.legal_sections || [],
-    classification_explanation: effective.explanation || '',
-    ml_analysis: effective.ml_analysis || null,
-    llm_analysis: effective.llm_analysis || null,
-    content_url: content.content_url,
-    platform: content.platform,
-    author: content.author,
-    is_priority: true,
-    priority_reason: reason || ''
-  });
-};
-
 const scanEventOnce = async ({ event, settings }) => {
-  const thresholds = computeEventThresholds(settings, event);
-  const globalKeywords = await Keyword.find({ is_active: true });
-  const keywordDocs = mergeKeywords(globalKeywords, event);
 
-  const query = buildEventQuery(event);
-  if (!query) return { scanned: 0, ingested: 0, alerts: 0 };
+  // Respect api_config.events.enabled (defensive — monitorService also checks)
+  if (settings?.api_config?.events?.enabled === false) {
+    return { scanned: 0, ingested: 0, alerts: 0 };
+  }
+
+  const queries = buildEventQueries(event);
+  if (!queries.length) return { scanned: 0, ingested: 0, alerts: 0 };
 
   let ingested = 0;
   let alerts = 0;
@@ -225,7 +217,7 @@ const scanEventOnce = async ({ event, settings }) => {
 
     try {
       const result = await rapidApiXService.fetchUserTweets(cleanHandle);
-      const tweets = Array.isArray(result) ? result : (result.tweets || []);
+      const tweets = Array.isArray(result) ? result : (result?.tweets || []);
       const map = new Map();
       for (const t of tweets) {
         if (t?.id) map.set(t.id, t);
@@ -239,15 +231,16 @@ const scanEventOnce = async ({ event, settings }) => {
     }
   };
 
-  const platforms = event.platforms && event.platforms.length > 0 ? event.platforms : ['youtube', 'x', 'facebook'];
+  const platforms = event.platforms && event.platforms.length > 0 ? event.platforms : ['youtube', 'x', 'facebook', 'instagram'];
 
   // X / Twitter
   if (platforms.includes('x')) {
     try {
-      const tweets = await rapidApiXService.searchTweets(query);
-      scanned += tweets.length;
+      const tweets = await fetchUniqueByQueries(queries, (q) => rapidApiXService.searchTweets(q));
+      const relevantTweets = filterTweetsByEventRelevance(tweets, event);
+      scanned += relevantTweets.length;
 
-      for (const t of tweets) {
+      for (const t of relevantTweets) {
         if ((!t.media || t.media.length === 0) && t.author_handle) {
           // Add a delay to avoid spraying requests if many tweets need hydration
           await new Promise(r => setTimeout(r, 1500));
@@ -287,53 +280,21 @@ const scanEventOnce = async ({ event, settings }) => {
 
         if (isNew) ingested++;
 
-        const analysisData = await analyzeContent(content.text, keywordDocs, {
-          highThreshold: thresholds.high,
-          mediumThreshold: thresholds.medium
-        });
-
-        // persist analysis + content intelligence using existing pipeline shape
-        const Analysis = require('../models/Analysis');
-        const analysis = await Analysis.create({ content_id: content.id, ...analysisData });
-        const riskEvidence = (analysisData.custom_evidence || analysisData.evidence || []);
-        const uniqueRiskFactors = [];
-        const seenRiskKeywords = new Set();
-        for (const e of riskEvidence) {
-          const key = String(e.keyword || '').trim().toLowerCase();
-          if (!key || seenRiskKeywords.has(key)) continue;
-          seenRiskKeywords.add(key);
-          uniqueRiskFactors.push({
-            keyword: e.keyword,
-            weight: e.weight ?? 10,
-            category: e.category || 'other',
-            context: e.context || ''
-          });
-        }
-
-        await Content.findOneAndUpdate(
-          { id: content.id },
-          {
-            risk_score: analysisData.risk_score ?? 0,
-            risk_level: String(analysisData.risk_level || '').toLowerCase(),
-            risk_factors: uniqueRiskFactors,
-            sentiment: analysisData.sentiment || 'neutral'
+        // Trigger S3 Archiving for X
+        if (content.media && content.media.length > 0) {
+          try {
+            const archivedMedia = await archiveTwitterMedia(content.media, content.content_id, {
+              postUrl: content.content_url
+            });
+            if (archivedMedia && archivedMedia.length > 0) {
+              await Content.findByIdAndUpdate(content._id, {
+                media: archivedMedia,
+                is_media_archived: true
+              });
+            }
+          } catch (err) {
+            console.error(`[EventMonitor] S3 Archive failed for X ${content.content_id}:`, err.message);
           }
-        );
-
-        const eventKeywordsLower = new Set((event.keywords || []).map((k) => normalizeText(typeof k === 'string' ? k : k.keyword)));
-        const triggered = (analysisData.triggered_keywords || []).some((k) => eventKeywordsLower.has(normalizeText(k)));
-        const hasViolence = (analysisData.evidence || []).some((e) => e.category === 'violence');
-
-        const shouldPriority = triggered || hasViolence;
-        if (shouldPriority) {
-          const a = await maybeCreatePriorityAlert({
-            event,
-            content,
-            analysis,
-            analysisData,
-            reason: triggered ? 'Event keyword match' : 'Violence signal'
-          });
-          if (a) alerts++;
         }
       }
     } catch (error) {
@@ -344,10 +305,15 @@ const scanEventOnce = async ({ event, settings }) => {
   // YouTube
   if (platforms.includes('youtube')) {
     try {
-      const videos = await youtubeService.searchVideos(query);
-      scanned += videos.length;
+      const videos = await fetchUniqueByQueries(queries, (q) => youtubeService.searchVideos(q));
+      const relevantVideos = filterPostsByEventRelevance(
+        videos,
+        event,
+        (v) => `${v?.title || ''} ${v?.description || ''}`
+      );
+      scanned += relevantVideos.length;
 
-      for (const v of videos) {
+      for (const v of relevantVideos) {
         const text = `${v.title || ''}\n${v.description || ''}`.trim();
         const { content, isNew } = await upsertEventContent({
           eventId: event.id,
@@ -377,71 +343,6 @@ const scanEventOnce = async ({ event, settings }) => {
         });
 
         if (isNew) ingested++;
-
-        const analysisData = await analyzeContent(content.text, keywordDocs, {
-          highThreshold: thresholds.high,
-          mediumThreshold: thresholds.medium
-        });
-
-        const Analysis = require('../models/Analysis');
-        const analysis = await Analysis.create({ content_id: content.id, ...analysisData });
-        await Content.findOneAndUpdate(
-          { id: content.id },
-          {
-            risk_score: analysisData.risk_score ?? 0,
-            risk_level: String(analysisData.risk_level || '').toLowerCase(),
-            risk_factors: (analysisData.evidence || []).map((e) => ({
-              keyword: e.keyword,
-              weight: e.weight ?? 10,
-              category: e.category || 'other',
-              context: e.context || ''
-            })),
-            sentiment: analysisData.sentiment || 'neutral'
-          }
-        );
-
-        // Comments ingestion + threat detection
-        try {
-          const comments = await youtubeService.getVideoComments(v.id, 50);
-          for (const c of comments) {
-            const existing = await Comment.findOne({ comment_id: c.id });
-            if (existing) continue;
-
-            const commentAnalysis = analyzeComment(c);
-            await Comment.create({
-              content_id: content.id,
-              video_id: v.id,
-              comment_id: c.id,
-              author_channel_id: c.authorChannelId,
-              author_display_name: c.authorDisplayName,
-              author_profile_image: c.authorProfileImageUrl,
-              text: c.textDisplay,
-              like_count: c.likeCount,
-              published_at: c.publishedAt ? new Date(c.publishedAt) : new Date(),
-              sentiment: commentAnalysis.riskScore > 50 ? 'negative' : 'neutral',
-              threat_score: commentAnalysis.riskScore,
-              is_threat: commentAnalysis.riskLevel !== 'low'
-            });
-          }
-        } catch {
-          // Ignore comment ingestion failures
-        }
-
-        const eventKeywordsLower = new Set((event.keywords || []).map((k) => normalizeText(typeof k === 'string' ? k : k.keyword)));
-        const triggered = (analysisData.triggered_keywords || []).some((k) => eventKeywordsLower.has(normalizeText(k)));
-        const hasViolence = (analysisData.evidence || []).some((e) => e.category === 'violence');
-
-        const shouldPriority = triggered || hasViolence;
-        if (shouldPriority) {
-          const a = await maybeCreatePriorityAlert({
-            event,
-            content,
-            analysis,
-            analysisData,
-            reason: triggered ? 'Event keyword match' : 'Violence signal'
-          });
-          if (a) alerts++;
-        }
       }
     } catch (error) {
       if (error.code === 403 || (error.message && error.message.includes('quota'))) {
@@ -454,10 +355,20 @@ const scanEventOnce = async ({ event, settings }) => {
 
   // Facebook
   if (platforms.includes('facebook')) {
-    const posts = await rapidApiFacebookService.searchPosts(query);
-    scanned += posts.length;
+    const posts = await fetchUniqueByQueries(queries, (q) => rapidApiFacebookService.searchPosts(q));
+    const relevantPosts = filterPostsByEventRelevance(posts, event, (p) => p?.text || '');
+    scanned += relevantPosts.length;
 
-    for (const p of posts) {
+    for (const p of relevantPosts) {
+      // Normalize media: searchPosts returns plain URL strings, Content model expects {type, url}
+      const normalizedMedia = (Array.isArray(p.media) ? p.media : []).map(m => {
+        if (typeof m === 'string') {
+          const isVideo = /\.(mp4|m3u8|webm|mov)(\?|$)/i.test(m) || /video/i.test(m);
+          return { type: isVideo ? 'video' : 'photo', url: m };
+        }
+        return m;
+      }).filter(m => m && m.url);
+
       const { content, isNew } = await upsertEventContent({
         eventId: event.id,
         platform: 'facebook',
@@ -468,89 +379,98 @@ const scanEventOnce = async ({ event, settings }) => {
           text: p.text || '',
           author: p.author || 'Unknown',
           author_handle: p.author_handle || 'unknown',
+          author_avatar: p.author_avatar || '',
           published_at: p.created_at ? new Date(p.created_at) : new Date(),
           engagement: {
             views: Number(p.metrics?.views || 0),
             likes: Number(p.metrics?.likes || 0),
             comments: Number(p.metrics?.comments || 0),
             retweets: Number(p.metrics?.shares || 0)
-          }
+          },
+          media: normalizedMedia,
+          raw_data: p
         }
       });
 
       if (isNew) ingested++;
 
-      const analysisData = await analyzeContent(content.text, keywordDocs, {
-        highThreshold: thresholds.high,
-        mediumThreshold: thresholds.medium
-      });
-
-      const Analysis = require('../models/Analysis');
-      const analysis = await Analysis.create({ content_id: content.id, ...analysisData });
-      await Content.findOneAndUpdate(
-        { id: content.id },
-        {
-          risk_score: analysisData.risk_score ?? 0,
-          risk_level: String(analysisData.risk_level || '').toLowerCase(),
-          risk_factors: (analysisData.evidence || []).map((e) => ({
-            keyword: e.keyword,
-            weight: e.weight ?? 10,
-            category: e.category || 'other',
-            context: e.context || ''
-          })),
-          sentiment: analysisData.sentiment || 'neutral'
-        }
-      );
-
-      // Fetch comments for Facebook posts
-      try {
-        if (p.metrics?.comments > 0) {
-          const comments = await rapidApiFacebookService.fetchPostComments(p.id, 30);
-          for (const c of comments) {
-            const existing = await Comment.findOne({ comment_id: c.id });
-            if (existing) continue;
-
-            const commentAnalysis = analyzeComment({ textDisplay: c.text });
-            await Comment.create({
-              content_id: content.id,
-              video_id: p.id,
-              comment_id: c.id,
-              author_channel_id: c.author_id || 'unknown',
-              author_display_name: c.author_name || 'Unknown',
-              author_profile_image: c.author_image,
-              text: c.text,
-              like_count: c.likes || 0,
-              published_at: c.created_at ? new Date(c.created_at) : new Date(),
-              sentiment: commentAnalysis.riskScore > 50 ? 'negative' : 'neutral',
-              threat_score: commentAnalysis.riskScore,
-              is_threat: commentAnalysis.riskLevel !== 'low'
+      // Trigger S3 Archiving for Facebook
+      if (content.media && content.media.length > 0) {
+        try {
+          const archivedMedia = await archiveContentMedia(content.media, content.content_id, {
+            folder: 'facebook-content',
+            useUniqueFileName: true,
+            postUrl: content.content_url
+          });
+          if (archivedMedia && archivedMedia.length > 0) {
+            await Content.findByIdAndUpdate(content._id, {
+              media: archivedMedia,
+              is_media_archived: true
             });
           }
+        } catch (err) {
+          console.error(`[EventMonitor] S3 Archive failed for Facebook ${content.content_id}:`, err.message);
         }
-      } catch {
-        // Ignore comment ingestion failures
-      }
-
-      const eventKeywordsLower = new Set((event.keywords || []).map((k) => normalizeText(typeof k === 'string' ? k : k.keyword)));
-      const triggered = (analysisData.triggered_keywords || []).some((k) => eventKeywordsLower.has(normalizeText(k)));
-      const hasViolence = (analysisData.evidence || []).some((e) => e.category === 'violence');
-
-      const shouldPriority = triggered || hasViolence;
-      if (shouldPriority) {
-        const a = await maybeCreatePriorityAlert({
-          event,
-          content,
-          analysis,
-          analysisData,
-          reason: triggered ? 'Event keyword match' : 'Violence signal'
-        });
-        if (a) alerts++;
       }
     }
   }
 
+  // Instagram
+  if (platforms.includes('instagram')) {
+    try {
+      const posts = await fetchUniqueByQueries(queries, (q) => rapidApiInstagramService.searchPosts(q));
+      const relevantPosts = filterPostsByEventRelevance(posts, event, (p) => p?.text || '');
+      scanned += relevantPosts.length;
+
+      for (const p of relevantPosts) {
+        const { content, isNew } = await upsertEventContent({
+          eventId: event.id,
+          platform: 'instagram',
+          contentId: p.id,
+          payload: {
+            source_id: null,
+            content_url: p.url,
+            text: p.text || '',
+            author: p.author || 'Unknown',
+            author_handle: p.author_handle || 'unknown',
+            published_at: p.created_at ? new Date(p.created_at) : new Date(),
+            engagement: {
+              views: Number(p.metrics?.views || 0),
+              likes: Number(p.metrics?.likes || 0),
+              comments: Number(p.metrics?.comments || 0)
+            },
+            media: p.media || []
+          }
+        });
+
+        if (isNew) ingested++;
+
+        // Trigger S3 Archiving for Instagram
+        if (content.media && content.media.length > 0) {
+          try {
+            const archivedMedia = await archiveContentMedia(content.media, content.content_id, {
+              folder: 'instagram-content',
+              useUniqueFileName: true,
+              postUrl: content.content_url
+            });
+            if (archivedMedia && archivedMedia.length > 0) {
+              await Content.findByIdAndUpdate(content._id, {
+                media: archivedMedia,
+                is_media_archived: true
+              });
+            }
+          } catch (err) {
+            console.error(`[EventMonitor] S3 Archive failed for Instagram ${content.content_id}:`, err.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[EventMonitor] Error monitoring Instagram for event ${event.name}: ${error.message}`);
+    }
+  }
+
   event.last_polled_at = new Date();
-  if (event.status !== 'active') event.status = 'active';
+  // Status is controlled manually — don't auto-set to active
   await event.save();
 
   return { scanned, ingested, alerts };

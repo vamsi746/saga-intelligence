@@ -304,7 +304,7 @@ const fetchUserPosts = async (username, maxId = "") => {
         }
     }
 
-    //console.error(`[Instagram] ❌ All endpoints failed for posts of ${username}`);
+    console.warn(`[Instagram] ⚠️ All endpoints failed for posts of ${username} — returning null (key exhaustion or shape change?)`);
     return null;
 };
 
@@ -335,7 +335,7 @@ const fetchUserProfile = async (username) => {
         }
     }
 
-    //console.error(`[Instagram] ❌ All endpoints failed for profile of ${username}`);
+    console.warn(`[Instagram] ⚠️ All endpoints failed for profile of ${username} — returning null`);
     return null;
 };
 
@@ -368,7 +368,7 @@ const fetchUserStories = async (username) => {
         }
     }
 
-    //console.error(`[Instagram] ❌ All endpoints failed for stories of ${username}`);
+    console.warn(`[Instagram] ⚠️ All endpoints failed for stories of ${username} — returning null`);
     return null;
 };
 

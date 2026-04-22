@@ -18,7 +18,8 @@ const {
   exportReports,
   getContacts,
   updateReport,
-  generateReportPdf
+  generateReportPdf,
+  getDashboardStats
 } = require('../controllers/grievanceWorkflowController');
 
 const requireWorkflowPageAccess = (req, res, next) => {
@@ -40,6 +41,9 @@ const requireWorkflowReportFeature = (req, res, next) => {
   }
   return next();
 };
+
+/* ── Dashboard stats (lightweight, no feature gate needed) ── */
+router.get('/dashboard-stats', getDashboardStats);
 
 router.use(protect, loadUserPermissions, requireWorkflowPageAccess, requireWorkflowReportFeature);
 

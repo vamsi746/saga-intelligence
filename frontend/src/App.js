@@ -39,27 +39,16 @@ const IntelligenceDashboard = lazy(() => import('./pages/IntelligenceDashboard')
 const PolicyManager = lazy(() => import('./components/PolicyManager'));
 const PersonOfInterest = lazy(() => import('./pages/POI/PersonOfInterest'));
 const POIDetail = lazy(() => import('./pages/POI/POIDetail'));
-//const DeepfakeAnalysis = lazy(() => import('./pages/Deepfake/DeepfakeAnalysis'));
 const AccessManagement = lazy(() => import('./pages/AccessManagement'));
 const DeepfakeAnalysis = lazy(() => import('./pages/Deepfake/DeepfakeAnalysis'));
 const Telegram = lazy(() => import('./pages/Telegram'));
+const AnalysisTools = lazy(() => import('./pages/AnalysisTools'));
+const EventsReport = lazy(() => import('./pages/EventsReport'));
 const TelanganaMap = lazy(() => import('./pages/TelanganaMap'));
-
 // Loading fallback
 const PageLoader = () => (
-  <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-    <div className="relative">
-      <img
-        src="/policelogo.jpg"
-        alt="Logo"
-        className="h-16 w-16 rounded-full object-cover border-2 border-amber-400 shadow-lg"
-      />
-      <div className="absolute inset-0 rounded-full border-2 border-t-amber-400 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-    </div>
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-sm font-bold text-slate-700 tracking-wider uppercase">BLURA SAGA</span>
-      <span className="text-[11px] text-slate-400 tracking-widest uppercase">Sentiment and Good Will Analysis</span>
-    </div>
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
   </div>
 );
 
@@ -81,15 +70,16 @@ function App() {
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route
-                    path=""
+                    path="/"
                     element={
                       <ProtectedRoute>
                         <Layout />
                       </ProtectedRoute>
                     }
                   >
-                    <Route index element={<Navigate to="/telangana-map" replace />} />
+                    <Route index element={<Navigate to="/dashboard" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="telangana-map" element={<TelanganaMap />} />
                     <Route path="sources" element={<Sources />} />
                     <Route path="content" element={<ContentFeed />} />
                     <Route path="youtube-monitor" element={<YouTubeMonitor />} />
@@ -121,8 +111,9 @@ function App() {
                     <Route path="person-of-interest/:id" element={<POIDetail />} />
                     <Route path="deepfake-analysis" element={<DeepfakeAnalysis />} />
                     <Route path="telegram" element={<Telegram />} />
-                    <Route path="telangana-map" element={<TelanganaMap />} />
+                    <Route path="analysis-tools" element={<AnalysisTools />} />
                     <Route path="deepfake/forensics" element={<DeepfakeAnalysis />} />
+                    <Route path="events-report" element={<EventsReport />} />
                     <Route path="help" element={<HelpGuide />} />
                   </Route>
                 </Routes>

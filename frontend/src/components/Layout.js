@@ -6,7 +6,7 @@ import { useRbac } from '../contexts/RbacContext';
 import AccessDenied from './AccessDenied';
 import {
   Shield, LayoutDashboard, Rss, AlertTriangle, BarChart3,
-  Settings, FileText, LogOut, Menu, X, Moon, Sun, ChevronRight, HelpCircle, Youtube, Twitter, Facebook, Instagram, Globe, CalendarDays, BellOff, MessageSquare, PhoneCall, Monitor, UserSearch, Scan, Search
+  Settings, FileText, LogOut, Menu, X, Moon, Sun, ChevronRight, HelpCircle, Youtube, Twitter, Facebook, Instagram, Globe, CalendarDays, BellOff, MessageSquare, PhoneCall, Monitor, UserSearch, Scan, Search, Wrench
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
@@ -73,22 +73,23 @@ const Layout = () => {
     { name: 'Alerts', href: '/alerts', icon: AlertTriangle },
     // { name: 'Reports', href: '/reports', icon: FileText },
     // { name: 'Sources', href: '/sources', icon: Rss },
-    { name: 'SM Handles', href: '/monitors', icon: Monitor },
+    //{ name: 'SM Handles', href: '/monitors', icon: Monitor },
     //{ name: 'YouTube Monitor', href: '/youtube-monitor', icon: Youtube },
     //{ name: 'X Monitor', href: '/x-monitor', icon: Twitter },
     //{ name: 'Facebook Monitor', href: '/facebook-monitor', icon: Facebook },
     //{ name: 'Instagram Monitor', href: '/instagram-monitor', icon: Instagram },
     { name: 'Events', href: '/events', icon: CalendarDays },
-    { name: 'Global Search', href: '/global-search', icon: Globe },
+    //{ name: 'Global Search', href: '/global-search', icon: Globe },
+    { name: 'Analysis Tools', href: '/analysis-tools', icon: Wrench },
     //{ name: 'Intelligence', href: '/intelligence-dashboard', icon: BarChart3 },
-    { name: 'Profile', href: '/person-of-interest', icon: UserSearch },
+    //{ name: 'Profile', href: '/person-of-interest', icon: UserSearch },
     //{ name: 'Policy Manager', href: '/policies', icon: Shield },
     //{ name: 'Policy Manager', href: '/policies', icon: Shield },
-    { name: 'Deepfake Analysis', href: '/deepfake-analysis', icon: Scan },
-    { name: 'Access Management', href: '/access-management', icon: Shield, roles: ['superadmin'] },
+    //{ name: 'Deepfake Analysis', href: '/deepfake-analysis', icon: Scan },
+    //{ name: 'Access Management', href: '/access-management', icon: Shield, roles: ['superadmin'] },
     //{ name: 'Telegram', href: '/telegram', icon: MessageSquare },
     { name: 'Settings', href: '/settings', icon: Settings },
-    { name: 'Help Guide', href: '/help', icon: HelpCircle },
+    //{ name: 'Help Guide', href: '/help', icon: HelpCircle },
 
   ];
 
@@ -118,11 +119,11 @@ const Layout = () => {
         />
       )}
 
-      {/* Top Bar - GOV themed with professional navy */}
-      <header className="fixed top-0 left-0 right-0 h-16 lg:h-20 bg-gradient-to-r from-[hsl(217,71%,18%)] via-[hsl(217,71%,22%)] to-[hsl(217,71%,18%)] border-b-2 lg:border-b-4 border-[hsl(43,96%,50%)] z-50 shadow-lg">
-        <div className="flex items-center justify-between h-full px-4 lg:px-6">
+      {/* Top Bar - SOC-EYE style */}
+      <header className="fixed top-0 left-0 right-0 h-16 lg:h-20 bg-gradient-to-r from-blue-950 via-blue-900 to-blue-950 z-50 shadow-lg select-none">
+        <div className="flex items-center justify-between h-full px-4 lg:px-6 relative">
           {/* Left: Menu + Logo */}
-          <div className="flex items-center gap-3 lg:gap-4">
+          <div className="flex items-center gap-3 lg:gap-4 relative z-10">
             <Button
               variant="ghost"
               size="icon"
@@ -135,23 +136,24 @@ const Layout = () => {
             </Button>
 
             <div className="flex items-center gap-3 lg:gap-4">
-              <div className="relative">
-                <img
-                  src="/policelogo.jpg"
-                  alt="Logo"
-                  className="h-10 w-10 lg:h-14 lg:w-14 rounded-full object-cover border-2 lg:border-3 border-[hsl(43,96%,50%)] shadow-lg ring-2 ring-white/20"
-                />
-                <div className="absolute -bottom-0.5 -right-0.5 lg:-bottom-1 lg:-right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 rounded-full border-2 border-white"></div>
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-lg lg:text-2xl font-heading font-bold text-white tracking-wider uppercase">BLURA SAGA</h1>
-                <span className="hidden sm:block text-[10px] lg:text-xs text-[hsl(43,96%,70%)] font-medium tracking-widest uppercase">Sentiment and Good Will Analysis</span>
+              <img
+                src="/policelogo.jpg"
+                alt="Logo"
+                className="h-10 w-10 lg:h-14 lg:w-14 object-cover rounded shadow-lg"
+              />
+              <div className="flex flex-col items-start justify-start text-left leading-tight">
+                <h1 className="text-base lg:text-2xl font-heading font-bold text-white tracking-wider uppercase drop-shadow-md">SOC - EYE</h1>
+                <span className="hidden sm:block text-[9px] lg:text-[10px] text-blue-200 font-medium tracking-widest uppercase drop-shadow">Social media Observation & Cyber intelligence</span>
               </div>
             </div>
           </div>
 
           {/* Right: Theme + User */}
           <div className="flex items-center gap-2 lg:gap-4">
+            <img src="/Logo.png" alt="BCSS Logo" className="h-8 lg:h-10 w-auto object-contain" />
+
+            <div className="hidden sm:block h-6 lg:h-8 w-px bg-white/20"></div>
+
             {unreadCount > 0 && (
               <Button
                 variant="ghost"
@@ -187,14 +189,14 @@ const Layout = () => {
             <div className="flex items-center gap-2 lg:gap-3">
               <div className="text-right hidden sm:block">
                 <div className="text-xs lg:text-sm font-semibold text-white truncate max-w-[120px] lg:max-w-none">{user?.full_name}</div>
-                <div className="text-[10px] lg:text-xs text-[hsl(43,96%,70%)] font-medium uppercase tracking-wide">{user?.role}</div>
+                <div className="text-[10px] lg:text-xs text-blue-200 font-medium uppercase tracking-wide">{user?.role}</div>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleLogout}
                 data-testid="logout-btn"
-                className="text-white hover:bg-red-500/20 hover:text-red-300 h-9 w-9 lg:h-10 lg:w-10"
+                className="text-white hover:bg-red-500/20 hover:text-red-200 h-9 w-9 lg:h-10 lg:w-10"
                 aria-label="Logout"
               >
                 <LogOut className="h-4 w-4 lg:h-5 lg:w-5" />
@@ -204,18 +206,16 @@ const Layout = () => {
         </div>
       </header>
 
-      {/* Sidebar - Responsive with overlay on mobile */}
+      {/* Sidebar - Narrow icon rail */}
       <aside
-        className={`fixed top-16 lg:top-20 left-0 bottom-0 w-72 lg:w-72 bg-white dark:bg-slate-950 border-r border-border shadow-xl z-40 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed top-16 lg:top-20 left-0 bottom-0 w-[82px] bg-gradient-to-b from-blue-950 via-blue-900 to-blue-950 shadow-xl z-40 transform transition-transform duration-300 ease-in-out select-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         data-testid="sidebar"
         role="navigation"
         aria-label="Main navigation"
       >
-
-
         {/* Navigation Links */}
-        <nav className="p-6 lg:p-4 space-y-1 lg:space-y-2 overflow-y-auto max-h-[calc(100vh-16rem)]">
+        <nav className="flex flex-col items-center gap-0.5 py-3 overflow-y-auto max-h-[calc(100vh-10rem)]" style={{ scrollbarWidth: 'none' }}>
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.href;
@@ -224,42 +224,33 @@ const Layout = () => {
                 key={item.name}
                 to={item.href}
                 data-testid={`nav-${item.name.toLowerCase().replace(' ', '-')}`}
-                className={`flex items-center gap-3 px-3 lg:px-4 py-3 lg:py-3 rounded-lg text-sm font-semibold transition-all duration-200 min-h-[44px] ${isActive
-                  ? 'bg-secondary text-primary shadow-md shadow-secondary/25 scale-[1.02]'
-                  : 'text-foreground hover:bg-muted hover:translate-x-1'
-                  }`}
+                className={`relative flex flex-col items-center justify-center w-[70px] py-2.5 rounded-xl text-center transition-all duration-200 group ${
+                  isActive
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-white/50 hover:bg-white/[0.05] hover:text-white/80'
+                }`}
               >
-                <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className="flex-1">{item.name}</span>
-                {item.name === 'Alerts' && unreadCount > 0 && (
-                  <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full mr-2">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-                {isActive && <ChevronRight className="h-4 w-4 text-primary" />}
+                <div className="relative">
+                  <Icon className={`h-[22px] w-[22px] mb-1 ${isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'}`} />
+                  {item.name === 'Alerts' && unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2.5 bg-red-500 text-white text-[9px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-lg shadow-red-500/30">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </div>
+                <span className={`text-[10px] leading-tight font-medium ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/70'}`}>{item.name}</span>
               </Link>
             );
           })}
         </nav>
-
-        {/* Footer Status */}
-        <div className="absolute bottom-0 left-0 right-0 bg-card border-t border-border">
-
-          <div className="pt-3 border-t border-border/50">
-            <p className="text-[18px] text-muted-foreground text-center mb-1">Powered by</p>
-            <div className="flex items-center justify-center">
-              <img src="/Logo.png" alt="BCSS Logo" className="h-19 w-auto object-contain" />
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
       <div
-        className={`flex-1 flex flex-col min-h-0 pt-16 lg:pt-20 transition-all duration-300 print:pt-0 print:pl-0 print:h-auto print:overflow-visible ${sidebarOpen && !isMobile ? 'lg:pl-72' : 'pl-0'
+        className={`flex-1 flex flex-col min-h-0 pt-16 lg:pt-20 transition-all duration-300 print:pt-0 print:pl-0 print:h-auto print:overflow-visible ${sidebarOpen && !isMobile ? 'lg:pl-[82px]' : 'pl-0'
           }`}
       >
-        <main className={`flex-1 min-h-0 ${isFullWidthPage ? 'p-0' : 'p-4 lg:p-8'} overflow-auto print:h-auto print:overflow-visible`}>
+        <main className={`flex-1 min-h-0 ${isFullWidthPage ? 'p-0' : 'p-4 lg:p-8'} overflow-auto scroll-smooth print:h-auto print:overflow-visible`}>
           {showAccessDenied ? <AccessDenied /> : <Outlet />}
         </main>
 

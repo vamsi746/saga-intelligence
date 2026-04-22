@@ -5,6 +5,7 @@ const ALL_PAGES = [
   { path: '/grievances', name: 'Grievances', icon: 'MessageSquare' },
   { path: '/global-search', name: 'Global Search', icon: 'Globe' },
   { path: '/events', name: 'Events', icon: 'CalendarDays' },
+  { path: '/events-report', name: 'Events Report', icon: 'FileText' },
   { path: '/unified-reports', name: 'Unified Reports', icon: 'FileText' },
   { path: '/settings', name: 'Settings', icon: 'Settings' },
   { path: '/help', name: 'Help Guide', icon: 'HelpCircle' },

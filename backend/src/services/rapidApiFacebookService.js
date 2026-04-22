@@ -277,7 +277,10 @@ const fetchPagePosts = async (pageIdOrUrl, limit = 10, pageName = null, options 
         // - If input is numeric: use directly.
         // - Else: resolve via /search/pages -> facebook_id.
         const resolvedId = isNumericId(input) ? input : await resolveUsablePageId(input);
-        if (!resolvedId) return [];
+        if (!resolvedId) {
+            console.warn(`[Facebook] fetchPagePosts: could not resolve numeric page_id for input="${input}" — returning []`);
+            return [];
+        }
 
         const rawPosts = await fetchRaw({ page_id: resolvedId });
 

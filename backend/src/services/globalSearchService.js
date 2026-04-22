@@ -7,8 +7,8 @@ const redditService = require('./redditService');
 class GlobalSearchService {
     constructor() {
         this.weights = {
-            recency: 0.4,
-            engagement: 0.5,
+            recency: 0.7,
+            engagement: 0.2,
             platform: 0.1
         };
 
@@ -24,13 +24,14 @@ class GlobalSearchService {
     /**
      * Search Profiles across all platforms
      */
-    async searchProfiles(query) {
+    async searchProfiles(query, limit = 20) {
+        const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
         console.log(`[GlobalSearch] Searching profiles for: ${query}`);
         // X fallback: RapidAPI X -> Official X API -> Scraper
         let xResults = [];
         let xError = null;
         try {
-            xResults = await rapidApiXService.searchUsers(query);
+            xResults = await rapidApiXService.searchUsers(query, safeLimit);
         } catch (e) {
             xError = e;
         }
@@ -80,27 +81,28 @@ class GlobalSearchService {
         }
         const results = await Promise.allSettled([
             Promise.resolve(this.normalizeList(xResults, 'x', 'user')),
-            youtubeService.searchChannels(query).then(res => this.normalizeList(res, 'youtube', 'user')),
-            rapidApiFacebookService.searchPages(query).then(res => this.normalizeList(res, 'facebook', 'user')),
-            rapidApiInstagramService.searchUsers(query).then(res => this.normalizeList(res, 'instagram', 'user')),
-            redditService.searchUsers(query).then(res => this.normalizeList(res, 'reddit', 'user'))
+            youtubeService.searchChannels(query, safeLimit).then(res => this.normalizeList(res, 'youtube', 'user')),
+            rapidApiFacebookService.searchPages(query, { limit: safeLimit }).then(res => this.normalizeList(res, 'facebook', 'user')),
+            rapidApiInstagramService.searchUsers(query, safeLimit).then(res => this.normalizeList(res, 'instagram', 'user')),
+            redditService.searchUsers(query, safeLimit).then(res => this.normalizeList(res, 'reddit', 'user'))
         ]);
         const flatResults = results
             .filter(r => r.status === 'fulfilled')
             .flatMap(r => r.value);
-        return this.rankResults(flatResults, 'user');
+        return this.rankResults(flatResults, 'user').slice(0, safeLimit);
     }
 
     /**
      * Search Content across all platforms
      */
-    async searchContent(query) {
+    async searchContent(query, limit = 20) {
+        const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
         console.log(`[GlobalSearch] Searching content for: ${query}`);
         // X fallback: RapidAPI X -> Official X API -> Scraper
         let xResults = [];
         let xError = null;
         try {
-            xResults = await rapidApiXService.searchTweets(query);
+            xResults = await rapidApiXService.searchTweets(query, safeLimit);
         } catch (e) {
             xError = e;
         }
@@ -108,7 +110,7 @@ class GlobalSearchService {
             try {
                 const xApiService = require('./xApiService');
                 // Official API only supports fetch by user, so try as username
-                const tweets = await xApiService.fetchUserTweets(query, 40);
+                const tweets = await xApiService.fetchUserTweets(query, safeLimit);
                 xResults = tweets || [];
             } catch (e) {
                 xError = e;
@@ -128,15 +130,14 @@ class GlobalSearchService {
         }
         const results = await Promise.allSettled([
             Promise.resolve(this.normalizeList(xResults, 'x', 'post')),
-            youtubeService.searchVideos(query).then(res => this.normalizeList(res, 'youtube', 'video')),
-            rapidApiFacebookService.searchPosts(query).then(res => this.normalizeList(res, 'facebook', 'post')),
-            rapidApiInstagramService.searchPosts(query).then(res => this.normalizeList(res, 'instagram', 'post')),
-            redditService.searchPosts(query).then(res => this.normalizeList(res, 'reddit', 'post'))
+            youtubeService.searchVideos(query, safeLimit).then(res => this.normalizeList(res, 'youtube', 'video')),
+            rapidApiFacebookService.searchPosts(query, safeLimit).then(res => this.normalizeList(res, 'facebook', 'post')),
+            redditService.searchPosts(query, safeLimit).then(res => this.normalizeList(res, 'reddit', 'post'))
         ]);
         const flatResults = results
             .filter(r => r.status === 'fulfilled')
             .flatMap(r => r.value);
-        return this.rankResults(flatResults, 'content');
+        return this.rankResults(flatResults, 'content').slice(0, safeLimit);
     }
 
     /**
@@ -259,15 +260,11 @@ class GlobalSearchService {
                 return scoreB - scoreA;
             }
 
-            // Rank Content by Relevance Score
-            // Score = (Engagement * Weight) + (Freshness * Weight) * Multiplier
-            const scoreA = (Math.log1p(a.scoreData.totalEngagement) * this.weights.engagement) +
-                (a.scoreData.freshness * 1000 * this.weights.recency) * a.scoreData.platformBoost;
-
-            const scoreB = (Math.log1p(b.scoreData.totalEngagement) * this.weights.engagement) +
-                (b.scoreData.freshness * 1000 * this.weights.recency) * b.scoreData.platformBoost;
-
-            return scoreB - scoreA;
+            // Content: sort by most recent first, with light engagement tiebreaker
+            const timeA = new Date(a.timestamp || 0).getTime();
+            const timeB = new Date(b.timestamp || 0).getTime();
+            if (timeA !== timeB) return timeB - timeA;
+            return (b.scoreData?.totalEngagement || 0) - (a.scoreData?.totalEngagement || 0);
         });
     }
 }

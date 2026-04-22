@@ -54,6 +54,68 @@ const settingsSchema = new mongoose.Schema({
   rapidapi_instagram_host: { type: String },
   telegram_session: { type: String },
 
+  // API Configuration (per-module, per-platform intervals in minutes)
+  api_config: {
+    monitoring: {
+      enabled: { type: Boolean, default: true },
+      // Category x Platform frequency matrix (values in minutes)
+      frequencies: {
+        x: {
+          political: { type: Number, default: 60 },
+          communal: { type: Number, default: 60 },
+          trouble_makers: { type: Number, default: 60 },
+          defamation: { type: Number, default: 60 },
+          narcotics: { type: Number, default: 60 },
+          history_sheeters: { type: Number, default: 60 },
+          others: { type: Number, default: 60 }
+        },
+        instagram: {
+          political: { type: Number, default: 60 },
+          communal: { type: Number, default: 60 },
+          trouble_makers: { type: Number, default: 60 },
+          defamation: { type: Number, default: 60 },
+          narcotics: { type: Number, default: 60 },
+          history_sheeters: { type: Number, default: 60 },
+          others: { type: Number, default: 60 }
+        },
+        facebook: {
+          political: { type: Number, default: 60 },
+          communal: { type: Number, default: 60 },
+          trouble_makers: { type: Number, default: 60 },
+          defamation: { type: Number, default: 60 },
+          narcotics: { type: Number, default: 60 },
+          history_sheeters: { type: Number, default: 60 },
+          others: { type: Number, default: 60 }
+        },
+        youtube: {
+          political: { type: Number, default: 60 },
+          communal: { type: Number, default: 60 },
+          trouble_makers: { type: Number, default: 60 },
+          defamation: { type: Number, default: 60 },
+          narcotics: { type: Number, default: 60 },
+          history_sheeters: { type: Number, default: 60 },
+          others: { type: Number, default: 60 }
+        }
+      }
+    },
+    events: {
+      x: { type: Number, default: 60 },
+      instagram: { type: Number, default: 60 },
+      facebook: { type: Number, default: 60 },
+      youtube: { type: Number, default: 60 },
+      enabled: { type: Boolean, default: true }
+    },
+    grievances: {
+      x: { type: Number, default: 60 },
+      facebook: { type: Number, default: 60 },
+      enabled: { type: Boolean, default: true }
+    },
+    telegram: {
+      sync_interval: { type: Number, default: 5 },
+      enabled: { type: Boolean, default: true }
+    }
+  },
+
 
   // Custom Threat Keywords for AI Model
   threat_keywords: [{

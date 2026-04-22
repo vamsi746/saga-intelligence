@@ -29,11 +29,13 @@ const eventSchema = new mongoose.Schema({
   },
   start_date: {
     type: Date,
-    required: true
+    required: false,
+    default: null
   },
   end_date: {
     type: Date,
-    required: true
+    required: false,
+    default: null
   },
   location: {
     type: String,
@@ -56,12 +58,12 @@ const eventSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ['planned', 'active', 'archived'],
-    default: 'planned'
+    enum: ['planned', 'active', 'archived', 'paused'],
+    default: 'paused'
   },
   auto_archive: {
     type: Boolean,
-    default: true
+    default: false
   },
 
   last_polled_at: {
@@ -71,6 +73,20 @@ const eventSchema = new mongoose.Schema({
   created_by: {
     type: String,
     default: 'system'
+  },
+  // Track auto-created events from Master Calendar
+  origin: {
+    type: String,
+    enum: ['manual', 'master_calendar'],
+    default: 'manual'
+  },
+  origin_calendar_id: {
+    type: String,
+    default: null
+  },
+  origin_year: {
+    type: Number,
+    default: null
   },
   created_at: {
     type: Date,
@@ -82,18 +98,23 @@ const eventSchema = new mongoose.Schema({
   },
   archived_at: {
     type: Date
+  },
+  report_pdf_url: {
+    type: String,
+    default: null
   }
 });
 
 eventSchema.virtual('is_active_now').get(function () {
   const now = new Date();
-  if (this.status === 'archived') return false;
+  if (this.status === 'archived' || this.status === 'paused') return false;
   return now >= this.start_date && now <= this.end_date;
 });
 
 eventSchema.set('toJSON', { virtuals: true });
 
 eventSchema.index({ start_date: 1, end_date: 1 });
+eventSchema.index({ origin: 1, origin_calendar_id: 1, origin_year: 1 });
 
 eventSchema.pre('save', function (next) {
   this.updated_at = new Date();

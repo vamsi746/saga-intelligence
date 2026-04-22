@@ -78,7 +78,6 @@ const checkVelocity = async (content, settings) => {
 const checkAndCreateVelocityAlerts = async (content, settings) => {
     try {
         if (!settings.velocity_alerts_enabled) return;
-        if (!isNegativeRevanthTargetPost(content)) return;
 
         // REMOVED CHECK: User requested viral alerts for ALL posts, not just risky ones.
         // const riskLevel = String(content.risk_level || '').toLowerCase();
@@ -248,7 +247,6 @@ const checkAndCreateVelocityAlerts = async (content, settings) => {
 const createNewPostAlert = async (content, settings) => {
     try {
         if (!settings.alert_for_every_post) return;
-        if (!isNegativeRevanthTargetPost(content)) return;
 
         // Check for existing HIGH/AI risk alert (Deduplication)
         // If an AI risk or Keyword risk alert exists, we DON'T need a duplicate "New Post" notification

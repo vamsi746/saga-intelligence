@@ -55,14 +55,17 @@ const archiveAlertMediaForContent = async (contentDetails = {}) => {
 
     if (platform === 'x') {
       if (mediaHasS3Gaps(media)) {
-        patch.media = await archiveTwitterMedia(media, contentDetails.content_id || contentId);
+        patch.media = await archiveTwitterMedia(media, contentDetails.content_id || contentId, {
+          postUrl: contentDetails.content_url
+        });
       }
       if (mediaHasS3Gaps(quotedMedia)) {
         patch.quoted_content = {
           ...(contentDetails.quoted_content || {}),
           media: await archiveTwitterMedia(
             quotedMedia,
-            `${contentDetails.content_id || contentId}_quoted_${contentDetails?.quoted_content?.author_handle || 'unknown'}`
+            `${contentDetails.content_id || contentId}_quoted_${contentDetails?.quoted_content?.author_handle || 'unknown'}`,
+            { postUrl: contentDetails.content_url }
           )
         };
       }

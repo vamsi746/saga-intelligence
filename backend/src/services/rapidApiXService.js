@@ -455,8 +455,40 @@ const normalizeTweet = (tweetResult, fallbackHandle = 'unknown') => {
         return null;
     }
 
-    const legacy = tweet.legacy;
-    if (!legacy) return null;
+    // Twitter241 sometimes returns tweets without a `legacy` envelope (newer GraphQL shape).
+    // Fall back to top-level fields so we don't silently drop every tweet.
+    let legacy = tweet.legacy;
+    if (!legacy) {
+        const hasTopLevelTweetFields = !!(
+            tweet.full_text || tweet.text || tweet.created_at ||
+            tweet.entities || tweet.extended_entities || tweet.id_str || tweet.rest_id
+        );
+        if (hasTopLevelTweetFields) {
+            legacy = {
+                full_text: tweet.full_text || tweet.text || '',
+                created_at: tweet.created_at,
+                entities: tweet.entities || {},
+                extended_entities: tweet.extended_entities,
+                id_str: tweet.id_str || tweet.rest_id,
+                conversation_id_str: tweet.conversation_id_str,
+                in_reply_to_status_id_str: tweet.in_reply_to_status_id_str,
+                in_reply_to_screen_name: tweet.in_reply_to_screen_name,
+                user_id_str: tweet.user_id_str,
+                lang: tweet.lang,
+                favorite_count: tweet.favorite_count ?? tweet.like_count ?? 0,
+                retweet_count: tweet.retweet_count ?? 0,
+                reply_count: tweet.reply_count ?? 0,
+                quote_count: tweet.quote_count ?? 0,
+                bookmark_count: tweet.bookmark_count ?? 0,
+                retweeted_status_result: tweet.retweeted_status_result,
+                quoted_status_id_str: tweet.quoted_status_id_str,
+                is_quote_status: !!tweet.quoted_status_id_str || !!tweet.quoted_status_result
+            };
+        } else {
+            console.warn(`[RapidAPI] normalizeTweet: dropping entry — no legacy & no top-level fields. typename=${tweet.__typename || 'n/a'} keys=${Object.keys(tweet || {}).slice(0, 8).join(',')}`);
+            return null;
+        }
+    }
 
     // Helper to extract user raw from various possible locations in a tweet object
     const extractUserRaw = (obj) => {

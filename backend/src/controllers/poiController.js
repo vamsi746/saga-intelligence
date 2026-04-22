@@ -1,5 +1,7 @@
 const POI = require('../models/POI');
 
+const PROFILE_PLATFORMS = ['x', 'facebook', 'instagram', 'youtube', 'whatsapp'];
+
 // GET /api/poi — List all POIs
 const getAllPOIs = async (req, res) => {
     try {
@@ -231,6 +233,110 @@ const getPoiBySourceId = async (req, res) => {
     }
 };
 
+// GET /api/poi/stats — Platform-wise profile stats (active/inactive)
+const getPoiStats = async (_req, res) => {
+    try {
+        const rows = await POI.aggregate([
+            {
+                $project: {
+                    createdAt: '$createdAt',
+                    state: {
+                        $cond: [{ $eq: ['$status', 'active'] }, 'active', 'inactive']
+                    },
+                    platforms: {
+                        $map: {
+                            input: { $ifNull: ['$socialMedia', []] },
+                            as: 'social',
+                            in: {
+                                $let: {
+                                    vars: {
+                                        platform: {
+                                            $toLower: {
+                                                $trim: {
+                                                    input: {
+                                                        $convert: {
+                                                            input: '$$social.platform',
+                                                            to: 'string',
+                                                            onError: '',
+                                                            onNull: ''
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    in: {
+                                        $switch: {
+                                            branches: [
+                                                { case: { $eq: ['$$platform', 'twitter'] }, then: 'x' },
+                                                { case: { $eq: ['$$platform', 'x'] }, then: 'x' },
+                                                { case: { $eq: ['$$platform', 'facebook'] }, then: 'facebook' },
+                                                { case: { $eq: ['$$platform', 'instagram'] }, then: 'instagram' },
+                                                { case: { $eq: ['$$platform', 'youtube'] }, then: 'youtube' },
+                                                { case: { $eq: ['$$platform', 'whatsapp'] }, then: 'whatsapp' }
+                                            ],
+                                            default: null
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]);
+
+        const init = () => ({ total: 0, active: 0, inactive: 0, today_added: 0, week_added: 0 });
+        const byPlatform = {
+            all: init(),
+            x: init(),
+            facebook: init(),
+            instagram: init(),
+            youtube: init(),
+            whatsapp: init()
+        };
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartMs = todayStart.getTime();
+
+        const weekStart = new Date();
+        weekStart.setHours(0, 0, 0, 0);
+        const dayOfWeek = weekStart.getDay();
+        const daysSinceMonday = (dayOfWeek + 6) % 7;
+        weekStart.setDate(weekStart.getDate() - daysSinceMonday);
+        const weekStartMs = weekStart.getTime();
+
+        rows.forEach((row) => {
+            const state = row?.state === 'inactive' ? 'inactive' : 'active';
+            const createdAtMs = row?.createdAt ? new Date(row.createdAt).getTime() : Number.NaN;
+            const isTodayAdded = !Number.isNaN(createdAtMs) && createdAtMs >= todayStartMs;
+            const isWeekAdded = !Number.isNaN(createdAtMs) && createdAtMs >= weekStartMs;
+
+            byPlatform.all[state] += 1;
+            byPlatform.all.total += 1;
+            if (isTodayAdded) byPlatform.all.today_added += 1;
+            if (isWeekAdded) byPlatform.all.week_added += 1;
+
+            const uniquePlatforms = [...new Set(
+                (row?.platforms || []).filter((platform) => PROFILE_PLATFORMS.includes(platform))
+            )];
+
+            uniquePlatforms.forEach((platform) => {
+                byPlatform[platform][state] += 1;
+                byPlatform[platform].total += 1;
+                if (isTodayAdded) byPlatform[platform].today_added += 1;
+                if (isWeekAdded) byPlatform[platform].week_added += 1;
+            });
+        });
+
+        res.json({ byPlatform });
+    } catch (error) {
+        console.error('[POI] Error fetching POI stats:', error.message);
+        res.status(500).json({ message: 'Failed to fetch POI stats', error: error.message });
+    }
+};
+
 module.exports = {
     getAllPOIs,
     getPOIById,
@@ -238,5 +344,6 @@ module.exports = {
     updatePOI,
     deletePOI,
     getLatestReport,
-    getPoiBySourceId
+    getPoiBySourceId,
+    getPoiStats
 };

@@ -11,6 +11,7 @@ const urlParserService = require('../services/urlParserService');
 const globalSearchService = require('../services/globalSearchService');
 const Source = require('../models/Source');
 const Content = require('../models/Content');
+const SearchHistory = require('../models/SearchHistory');
 const openaiGlanceService = require('../services/openaiGlanceService');
 
 const getRetryAfterSeconds = (error) => {
@@ -34,10 +35,86 @@ const withTimeout = (promise, ms = 30000, label = 'operation') => {
     ]).finally(() => clearTimeout(timer));
 };
 
+const buildResultsSearchText = (results) => {
+    if (!Array.isArray(results) || results.length === 0) return '';
+
+    const snippets = [];
+    for (const item of results.slice(0, 300)) {
+        if (!item || typeof item !== 'object') continue;
+
+        const parts = [
+            item.text,
+            item.title,
+            item.description,
+            item.author,
+            item.author_handle,
+            item.channelTitle,
+            item.screen_name,
+            item.name,
+            item.url,
+            item.content_url
+        ]
+            .filter(Boolean)
+            .map((value) => String(value).trim())
+            .filter(Boolean);
+
+        if (parts.length > 0) {
+            snippets.push(parts.join(' '));
+        }
+    }
+
+    // Keep bounded size for storage and index cost.
+    return snippets.join(' ').slice(0, 20000);
+};
+
+const buildSingleResultSearchText = (item) => {
+    if (!item || typeof item !== 'object') return '';
+
+    return [
+        item.text,
+        item.title,
+        item.description,
+        item.author,
+        item.author_handle,
+        item.channelTitle,
+        item.screen_name,
+        item.name,
+        item.url,
+        item.content_url
+    ]
+        .filter(Boolean)
+        .map((value) => String(value).trim().toLowerCase())
+        .join(' ');
+};
+
+const countMatchedResults = (results, searchText) => {
+    const safeResults = Array.isArray(results) ? results : [];
+    const normalizedSearch = String(searchText || '').trim().toLowerCase();
+    if (!normalizedSearch) return safeResults.length;
+
+    const terms = normalizedSearch.split(/\s+/).filter(Boolean);
+    if (!terms.length) return safeResults.length;
+
+    let count = 0;
+    for (const item of safeResults) {
+        const haystack = buildSingleResultSearchText(item);
+        if (!haystack) continue;
+
+        const phraseMatch = haystack.includes(normalizedSearch);
+        const termsMatch = terms.every((term) => haystack.includes(term));
+        if (phraseMatch || termsMatch) {
+            count += 1;
+        }
+    }
+
+    return count;
+};
+
 // Search Profiles (Users/Channels/Pages)
 const searchProfiles = async (req, res) => {
     try {
         const { platform, query } = req.query;
+        const parsedLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 50);
 
         if (!query) {
             return res.status(400).json({ error: 'Query parameter is required' });
@@ -47,17 +124,17 @@ const searchProfiles = async (req, res) => {
         const timeout = 35000; // 35s per platform
 
         if (platform === 'x') {
-            results = await withTimeout(rapidApiXService.searchUsers(query), timeout, 'X search');
+            results = await withTimeout(rapidApiXService.searchUsers(query, parsedLimit), timeout, 'X search');
         } else if (platform === 'youtube') {
-            results = await withTimeout(youtubeService.searchChannels(query), timeout, 'YouTube search');
+            results = await withTimeout(youtubeService.searchChannels(query, parsedLimit), timeout, 'YouTube search');
         } else if (platform === 'reddit') {
-            results = await withTimeout(redditService.searchUsers(query), timeout, 'Reddit search');
+            results = await withTimeout(redditService.searchUsers(query, parsedLimit), timeout, 'Reddit search');
         } else if (platform === 'facebook') {
-            results = await withTimeout(rapidApiFacebookService.searchPages(query, { throwOnCooldown: true }), timeout, 'Facebook search');
+            results = await withTimeout(rapidApiFacebookService.searchPages(query, { throwOnCooldown: true, limit: parsedLimit }), timeout, 'Facebook search');
         } else if (platform === 'instagram') {
-            results = await withTimeout(rapidApiInstagramService.searchUsers(query), timeout, 'Instagram search');
+            results = await withTimeout(rapidApiInstagramService.searchUsers(query, parsedLimit), timeout, 'Instagram search');
         } else if (platform === 'all') {
-            results = await globalSearchService.searchProfiles(query);
+            results = await globalSearchService.searchProfiles(query, parsedLimit);
         } else {
             return res.status(400).json({ error: 'Invalid platform. Use "x", "youtube", "reddit", "facebook", "instagram", or "all".' });
         }
@@ -81,6 +158,7 @@ const searchProfiles = async (req, res) => {
 const searchContent = async (req, res) => {
     try {
         const { platform, query } = req.query;
+        const parsedLimit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
 
         if (!query) {
             return res.status(400).json({ error: 'Query parameter is required' });
@@ -90,19 +168,24 @@ const searchContent = async (req, res) => {
         const timeout = 35000;
 
         if (platform === 'x') {
-            results = await withTimeout(rapidApiXService.searchTweets(query), timeout, 'X content search');
+            results = await withTimeout(rapidApiXService.searchTweets(query, parsedLimit), timeout, 'X content search');
         } else if (platform === 'youtube') {
-            results = await withTimeout(youtubeService.searchVideos(query), timeout, 'YouTube search');
+            results = await withTimeout(youtubeService.searchVideos(query, parsedLimit), timeout, 'YouTube search');
         } else if (platform === 'reddit') {
-            results = await withTimeout(redditService.searchPosts(query), timeout, 'Reddit search');
+            results = await withTimeout(redditService.searchPosts(query, parsedLimit), timeout, 'Reddit search');
         } else if (platform === 'facebook') {
-            results = await withTimeout(rapidApiFacebookService.searchPosts(query, 40, { throwOnCooldown: true }), timeout, 'Facebook search');
-        } else if (platform === 'instagram') {
-            results = await withTimeout(rapidApiInstagramService.searchPosts(query), timeout, 'Instagram search');
+            results = await withTimeout(
+                rapidApiFacebookService.searchPosts(query, parsedLimit, {
+                    throwOnCooldown: true,
+                    maxSearchMs: 28000
+                }),
+                timeout,
+                'Facebook search'
+            );
         } else if (platform === 'all') {
-            results = await globalSearchService.searchContent(query);
+            results = await globalSearchService.searchContent(query, parsedLimit);
         } else {
-            return res.status(400).json({ error: 'Invalid platform. Use "x", "youtube", "reddit", "facebook", "instagram", or "all".' });
+            return res.status(400).json({ error: 'Invalid platform. Use "x", "youtube", "reddit", "facebook", or "all".' });
         }
 
         res.json(Array.isArray(results) ? results : []);
@@ -115,8 +198,238 @@ const searchContent = async (req, res) => {
             });
         }
 
+        // YouTube quota exceeded
+        if (status === 403 && (error?.errors?.[0]?.reason === 'quotaExceeded' || error?.message?.includes('quota'))) {
+            console.warn('[Search] YouTube API quota exceeded');
+            return res.json([]);
+        }
+
         console.error('Search Content Error:', error?.message || error);
         res.status(500).json({ error: 'Failed to search content' });
+    }
+};
+
+const saveSearchHistory = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            query,
+            searchType,
+            platform,
+            results,
+            platformCounts,
+            platformErrors,
+            durationMs,
+            searchedAt
+        } = req.body || {};
+
+        const normalizedQuery = String(query || '').trim();
+        const normalizedSearchType = String(searchType || '').toLowerCase();
+        const normalizedPlatform = String(platform || '').toLowerCase();
+
+        if (!normalizedQuery) {
+            return res.status(400).json({ error: 'query is required' });
+        }
+        if (!['profiles', 'content'].includes(normalizedSearchType)) {
+            return res.status(400).json({ error: 'searchType must be profiles or content' });
+        }
+        if (!['all', 'x', 'youtube', 'reddit', 'facebook', 'instagram'].includes(normalizedPlatform)) {
+            return res.status(400).json({ error: 'Invalid platform' });
+        }
+
+        const safeResults = Array.isArray(results) ? results : [];
+        const resultsSearchText = buildResultsSearchText(safeResults).toLowerCase();
+
+        const doc = await SearchHistory.create({
+            user_id: userId,
+            user_email: req.user?.email || '',
+            query: normalizedQuery,
+            query_normalized: normalizedQuery.toLowerCase(),
+            results_search_text: resultsSearchText,
+            search_type: normalizedSearchType,
+            platform: normalizedPlatform,
+            total_results: safeResults.length,
+            platform_counts: platformCounts && typeof platformCounts === 'object' ? platformCounts : {},
+            platform_errors: platformErrors && typeof platformErrors === 'object' ? platformErrors : {},
+            duration_ms: Number.isFinite(Number(durationMs)) ? Number(durationMs) : 0,
+            results: safeResults,
+            searched_at: searchedAt ? new Date(searchedAt) : new Date()
+        });
+
+        return res.status(201).json({ success: true, id: doc.id });
+    } catch (error) {
+        console.error('[SearchHistory] save error:', error?.message || error);
+        return res.status(500).json({ error: 'Failed to save search history' });
+    }
+};
+
+const getSearchHistory = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            page = 1,
+            limit = 20,
+            searchType,
+            platform,
+            q,
+            from,
+            to
+        } = req.query;
+
+        const parsedPage = Math.max(Number(page) || 1, 1);
+        const parsedLimit = 20;
+        const skip = (parsedPage - 1) * parsedLimit;
+
+        const filter = { user_id: userId };
+
+        if (searchType && ['profiles', 'content'].includes(String(searchType).toLowerCase())) {
+            filter.search_type = String(searchType).toLowerCase();
+        }
+
+        if (platform && ['all', 'x', 'youtube', 'reddit', 'facebook', 'instagram'].includes(String(platform).toLowerCase())) {
+            filter.platform = String(platform).toLowerCase();
+        }
+
+        const searchText = String(q || '').trim();
+        if (searchText) {
+            // Use compound text index { user_id: 1, query: 'text', results_search_text: 'text' }
+            // Replaces the old $or with $regex (caused collection scans on unanchored regex)
+            filter.$text = { $search: searchText };
+        }
+
+        const fromDate = from ? new Date(from) : null;
+        const toDate = to ? new Date(to) : null;
+        if (fromDate || toDate) {
+            filter.searched_at = {};
+            if (fromDate && !Number.isNaN(fromDate.getTime())) filter.searched_at.$gte = fromDate;
+            if (toDate && !Number.isNaN(toDate.getTime())) {
+                toDate.setHours(23, 59, 59, 999);
+                filter.searched_at.$lte = toDate;
+            }
+        }
+
+        // PERF: Exclude 'results' array — it stores hundreds of full result objects per item.
+        // Only loaded when viewing a specific item via getSearchHistoryById.
+        const listProjection = 'id query search_type platform total_results platform_counts platform_errors duration_ms searched_at created_at updated_at';
+
+        const historyListQuery = SearchHistory.find(filter)
+            .select(listProjection)
+            .sort({ searched_at: -1, _id: -1 })
+            .skip(skip)
+            .limit(parsedLimit)
+            .lean();
+
+        if (searchText) {
+            historyListQuery.select({ score: { $meta: 'textScore' } });
+        }
+
+        const [rawItems, total] = await Promise.all([
+            historyListQuery,
+            SearchHistory.countDocuments(filter)
+        ]);
+
+        // Compute matched_results_count server-side via aggregation (only when actively searching).
+        // This avoids loading the heavy 'results' array into Node.js memory.
+        let matchedCounts = {};
+        if (searchText && rawItems.length > 0) {
+            try {
+                const escaped = searchText.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const itemIds = rawItems.map(i => i.id);
+                const countPipeline = [
+                    { $match: { id: { $in: itemIds } } },
+                    {
+                        $project: {
+                            id: 1,
+                            matched_results_count: {
+                                $size: {
+                                    $filter: {
+                                        input: { $ifNull: ['$results', []] },
+                                        as: 'r',
+                                        cond: {
+                                            $regexMatch: {
+                                                input: {
+                                                    $toLower: {
+                                                        $concat: [
+                                                            { $ifNull: ['$$r.text', ''] }, ' ',
+                                                            { $ifNull: ['$$r.title', ''] }, ' ',
+                                                            { $ifNull: ['$$r.description', ''] }, ' ',
+                                                            { $ifNull: ['$$r.author', ''] }, ' ',
+                                                            { $ifNull: ['$$r.author_handle', ''] }, ' ',
+                                                            { $ifNull: ['$$r.channelTitle', ''] }, ' ',
+                                                            { $ifNull: ['$$r.screen_name', ''] }, ' ',
+                                                            { $ifNull: ['$$r.name', ''] }
+                                                        ]
+                                                    }
+                                                },
+                                                regex: escaped,
+                                                options: 'i'
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ];
+                const countResults = await SearchHistory.aggregate(countPipeline);
+                for (const c of countResults) {
+                    matchedCounts[c.id] = c.matched_results_count;
+                }
+            } catch (aggErr) {
+                console.warn('[SearchHistory] matched count aggregation failed:', aggErr.message);
+            }
+        }
+
+        const items = (rawItems || []).map((item) => {
+            const { score, ...rest } = item;
+            return {
+                ...rest,
+                matched_results_count: searchText
+                    ? (matchedCounts[item.id] ?? item.total_results ?? 0)
+                    : (item.total_results || 0)
+            };
+        });
+
+        return res.json({
+            items,
+            pagination: {
+                page: parsedPage,
+                limit: parsedLimit,
+                total,
+                totalPages: Math.max(Math.ceil(total / parsedLimit), 1)
+            }
+        });
+    } catch (error) {
+        console.error('[SearchHistory] list error:', error?.message || error);
+        return res.status(500).json({ error: 'Failed to fetch search history' });
+    }
+};
+
+const getSearchHistoryById = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { id } = req.params;
+        const item = await SearchHistory.findOne({ id, user_id: userId }).lean();
+        if (!item) {
+            return res.status(404).json({ error: 'Search history not found' });
+        }
+
+        return res.json(item);
+    } catch (error) {
+        console.error('[SearchHistory] detail error:', error?.message || error);
+        return res.status(500).json({ error: 'Failed to fetch search history detail' });
     }
 };
 
@@ -638,10 +951,18 @@ No significant activity found. Try:
     return analysis;
 }
 
-module.exports = { searchProfiles, searchContent, glanceSearch, fetchPostByUrl };
+module.exports = {
+    searchProfiles,
+    searchContent,
+    glanceSearch,
+    fetchPostByUrl,
+    saveSearchHistory,
+    getSearchHistory,
+    getSearchHistoryById
+};
 
 /**
- * Fetch post/content by URL - supports YouTube, X/Twitter, Facebook, Reddit
+ * Fetch post/content by URL - supports YouTube, X/Twitter, Facebook, Instagram, Reddit
  * Parses the URL, fetches content from the platform, and checks if source is monitored
  */
 async function fetchPostByUrl(req, res) {
@@ -658,7 +979,7 @@ async function fetchPostByUrl(req, res) {
         if (!parsedUrl) {
             return res.status(400).json({
                 error: 'Unsupported URL format',
-                message: 'Please provide a valid YouTube, X/Twitter, Facebook, or Reddit post URL'
+                message: 'Please provide a valid YouTube, X/Twitter, Facebook, Instagram, or Reddit post URL'
             });
         }
 

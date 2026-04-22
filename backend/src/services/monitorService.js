@@ -352,14 +352,29 @@ const monitorYoutubeSource = async (source, apiKey) => {
     });
 
     const newContent = [];
-    const items = response.data.items || [];
+    let items = response.data.items || [];
+    const apiCount = items.length;
 
+    // Lookback filter (default: 7 days) — parity with X monitor
+    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 7);
+    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 7;
+    const cutoff = Date.now() - (safeLookbackDays * 24 * 60 * 60 * 1000);
+    const beforeLookback = items.length;
+    items = items.filter(it => {
+      const created = it.snippet?.publishedAt ? new Date(it.snippet.publishedAt).getTime() : NaN;
+      return Number.isFinite(created) ? created >= cutoff : true;
+    });
+    if (items.length < beforeLookback) {
+      console.log(`[Monitor YT] channel=${source.identifier}: lookback ${safeLookbackDays}d dropped ${beforeLookback - items.length}/${beforeLookback}`);
+    }
+
+    let existingCount = 0;
     for (const item of items) {
       const videoId = item.id.videoId;
 
       // Check if exists
       const existing = await Content.findOne({ content_id: videoId });
-      if (existing) continue;
+      if (existing) { existingCount++; continue; }
 
       // Get video details
       const videoResponse = await youtube.videos.list({
@@ -367,7 +382,10 @@ const monitorYoutubeSource = async (source, apiKey) => {
         id: videoId
       });
 
-      if (!videoResponse.data.items || videoResponse.data.items.length === 0) continue;
+      if (!videoResponse.data.items || videoResponse.data.items.length === 0) {
+        console.warn(`[Monitor YT] videos.list returned no items for videoId=${videoId}`);
+        continue;
+      }
 
       const videoData = videoResponse.data.items[0];
       const snippet = videoData.snippet;
@@ -399,15 +417,15 @@ const monitorYoutubeSource = async (source, apiKey) => {
 
       await content.save();
       newContent.push(content);
-      //console.log(`New YouTube video: ${videoId} from ${source.display_name}`);
     }
 
     // Update last checked
     await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
 
+    console.log(`[Monitor YT] channel=${source.identifier}: api=${apiCount} afterLookback=${items.length} new=${newContent.length} existing=${existingCount}`);
     return newContent;
   } catch (error) {
-    //console.error(`Error monitoring YouTube source ${source.display_name}: ${error.message}`);
+    console.error(`[Monitor YT] Error for ${source.display_name}: ${error.message}`);
     return [];
   }
 };
@@ -477,18 +495,30 @@ const monitorXSource = async (source) => {
     // Update last checked - do this AFTER fetching but BEFORE early returns to confirm poll success
     await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
 
-    if (!tweets || tweets.length === 0) return [];
+    const apiCount = Array.isArray(tweets) ? tweets.length : 0;
+    if (!tweets || tweets.length === 0) {
+      console.log(`[Monitor X] @${source.identifier}: api=0 — no tweets returned by fetcher`);
+      return [];
+    }
 
-    // Profile monitor lookback window (default: last 1 day)
-    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 1);
-    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 1;
+    // Profile monitor lookback window (default: last 7 days)
+    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 7);
+    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 7;
     const cutoff = Date.now() - (safeLookbackDays * 24 * 60 * 60 * 1000);
+    const beforeLookback = tweets.length;
     tweets = tweets.filter(t => {
       const created = t.created_at ? new Date(t.created_at).getTime() : NaN;
       return Number.isFinite(created) ? created >= cutoff : true;
     });
+    const afterLookback = tweets.length;
+    if (afterLookback < beforeLookback) {
+      console.log(`[Monitor X] @${source.identifier}: lookback ${safeLookbackDays}d dropped ${beforeLookback - afterLookback}/${beforeLookback}`);
+    }
 
-    if (!tweets || tweets.length === 0) return [];
+    if (!tweets || tweets.length === 0) {
+      console.log(`[Monitor X] @${source.identifier}: api=${apiCount} afterLookback=0 new=0`);
+      return [];
+    }
 
     const newContent = [];
 
@@ -542,17 +572,18 @@ const monitorXSource = async (source) => {
             views: parseInt(tweet.metrics?.view || tweet.metrics?.views) || 0
           };
 
+          // Resolve quoted_content with safeguard against 'Unknown' overwriting valid data
+          const safeQuotedContent = (tweet.quoted_content && (tweet.quoted_content.author_name !== 'Unknown' || !existing.quoted_content))
+            ? tweet.quoted_content
+            : (quotedForSave || existing.quoted_content);
+
           const updatedDoc = await Content.findOneAndUpdate(
             { id: existing.id },
             {
               $set: {
                 text: tweet.text || existing.text,
-                quoted_content: quotedForSave || existing.quoted_content,
-                media: incomingMedia.length > 0 ? incomingMedia : existing.media,
-                // Safeguard against 'Unknown' overwriting valid quoted_content
-                quoted_content: (tweet.quoted_content && (tweet.quoted_content.author_name !== 'Unknown' || !existing.quoted_content))
-                  ? tweet.quoted_content : existing.quoted_content,
-
+                quoted_content: safeQuotedContent,
+                media: mediaForSave,
                 url_cards: incomingCards.length > 0 ? incomingCards : existing.url_cards,
                 is_repost: tweet.is_repost ?? existing.is_repost,
 
@@ -563,7 +594,6 @@ const monitorXSource = async (source) => {
                   ? tweet.original_author_name : existing.original_author_name,
 
                 original_author_avatar: tweet.original_author_avatar || existing.original_author_avatar,
-                media: mediaForSave,
                 is_media_archived: mediaForSave.length > 0 ? !hasS3Gaps(mediaForSave) : existing.is_media_archived,
                 scraped_content: mediaForSave.length > 0 ? `Media Count: ${mediaForSave.length}` : existing.scraped_content,
                 engagement: newEngagement,
@@ -645,6 +675,10 @@ const monitorXSource = async (source) => {
       }
       //console.log(`New X post: ${tweet.id} from ${source.display_name}`);
     }
+
+    const createdCount = newContent.filter(c => !c.is_update).length;
+    const updatedCount = newContent.filter(c => c.is_update).length;
+    console.log(`[Monitor X] @${source.identifier}: api=${apiCount} afterLookback=${tweets.length} new=${createdCount} updated=${updatedCount}`);
 
     // Queue background URL card enrichment for new content
     if (newContent.length > 0) {
@@ -1006,22 +1040,39 @@ const monitorInstagramSource = async (source, accessToken) => {
     try {
       const postsRaw = await rapidApiInstagramService.fetchUserPosts(handle);
       posts = extractPosts(postsRaw);
-      //console.log(`[Instagram Monitor] 📦 Extracted ${posts.length} posts for @${handle}`);
     } catch (postsErr) {
       postsFetchFailed = true;
-      //console.error(`[Instagram Monitor] ❌ Posts fetch failed for @${handle}: ${postsErr.message}`);
+      console.error(`[Monitor IG] @${handle}: posts fetch failed: ${postsErr.message}`);
     }
 
     // If both profile and posts failed, something is seriously wrong with this source
     if (profileFetchFailed && postsFetchFailed) {
-      //console.error(`[Instagram Monitor] 🚨 Complete API failure for @${handle}. All API keys may be exhausted. Will retry next cycle.`);
-      // Still update last_checked so we don't hammer a broken source
+      console.error(`[Monitor IG] @${handle}: complete API failure (all keys may be exhausted). Will retry next cycle.`);
       await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
       return [];
     }
 
+    const apiCount = Array.isArray(posts) ? posts.length : 0;
+
+    // Lookback filter (default: 7 days) — parity with X monitor
+    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 7);
+    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 7;
+    const cutoff = Date.now() - (safeLookbackDays * 24 * 60 * 60 * 1000);
+    const beforeLookback = apiCount;
+    posts = (posts || []).filter(p => {
+      const raw = pickFirst(p?.taken_at_timestamp, p?.taken_at, p?.created_time, p?.timestamp, p?.created_at);
+      if (!raw) return true;
+      let ms;
+      if (typeof raw === 'number') ms = raw < 1e12 ? raw * 1000 : raw;
+      else ms = new Date(raw).getTime();
+      return Number.isFinite(ms) ? ms >= cutoff : true;
+    });
+    if (posts.length < beforeLookback) {
+      console.log(`[Monitor IG] @${handle}: lookback ${safeLookbackDays}d dropped ${beforeLookback - posts.length}/${beforeLookback}`);
+    }
+
     if (!posts || posts.length === 0) {
-      //console.log(`[Instagram Monitor] ℹ️ No posts found for @${handle} (may be private or empty)`);
+      console.log(`[Monitor IG] @${handle}: api=${apiCount} afterLookback=0 new=0 updated=0`);
       await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
       return [];
     }
@@ -1304,7 +1355,7 @@ const monitorInstagramSource = async (source, accessToken) => {
     // ─── STEP 5: Update source last_checked ──────────────────────────────
     await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
 
-    //console.log(`[Instagram Monitor] ✅ Scan complete for @${handle}: ${processedCount} new posts, ${storiesCount} stories, ${updatedCount} updated, ${errorCount} errors`);
+    console.log(`[Monitor IG] @${handle}: api=${apiCount} afterLookback=${posts.length} new=${processedCount} updated=${updatedCount} stories=${storiesCount} errors=${errorCount}`);
     return newContent;
 
   } catch (error) {
@@ -1356,7 +1407,27 @@ const monitorFacebookSource = async (source, accessToken, options = {}) => {
       // fallback: try the URL form (covers cases where pageKey is numeric but API expects URL)
       posts = await rapidApiFacebookService.fetchPagePosts(pageUrl, 10, source.display_name, { throwOnCooldown: !!options.throwOnCooldown });
     }
+    posts = Array.isArray(posts) ? posts : [];
+    const apiCount = posts.length;
+
+    // Lookback filter (default: 7 days) — parity with X monitor
+    const lookbackDays = Number(process.env.MONITOR_LOOKBACK_DAYS || 7);
+    const safeLookbackDays = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : 7;
+    const cutoff = Date.now() - (safeLookbackDays * 24 * 60 * 60 * 1000);
+    const beforeLookback = posts.length;
+    posts = posts.filter(p => {
+      if (!p?.created_at) return true;
+      let ms;
+      if (typeof p.created_at === 'number') ms = p.created_at < 1e12 ? p.created_at * 1000 : p.created_at;
+      else ms = new Date(p.created_at).getTime();
+      return Number.isFinite(ms) ? ms >= cutoff : true;
+    });
+    if (posts.length < beforeLookback) {
+      console.log(`[Monitor FB] page=${source.identifier}: lookback ${safeLookbackDays}d dropped ${beforeLookback - posts.length}/${beforeLookback}`);
+    }
+
     const newContent = [];
+    let updatedCount = 0;
 
     for (const post of posts) {
       let content = await Content.findOne({ content_id: post.id });
@@ -1389,6 +1460,7 @@ const monitorFacebookSource = async (source, accessToken, options = {}) => {
           views: post.engagement.views
         });
         await content.save();
+        updatedCount++;
       } else {
         // Create new content
         const mediaItems = Array.isArray(post.media)
@@ -1447,6 +1519,7 @@ const monitorFacebookSource = async (source, accessToken, options = {}) => {
     // Update source last_checked
     await Source.findOneAndUpdate({ id: source.id }, { last_checked: new Date() });
 
+    console.log(`[Monitor FB] page=${source.identifier}: api=${apiCount} afterLookback=${posts.length} new=${newContent.length} updated=${updatedCount}`);
     return newContent;
 
   } catch (error) {
@@ -1454,6 +1527,7 @@ const monitorFacebookSource = async (source, accessToken, options = {}) => {
       throw error;
     }
     //console.error(`Error monitoring Facebook source ${source.display_name}: ${error.message}`);
+    console.error(`[Monitor FB] Error for ${source.display_name}: ${error.message}`);
     return [];
   }
 };
@@ -1597,24 +1671,33 @@ const scanSourceOnce = async (source, options = {}) => {
     if (existingAlert) {
       // Update if upgrading to Viral or Higher Risk
       /* Skipping update logic for simplicity as requested "new post fetched... analyzed... alert" flow usually implies fresh content */
-      //console.log(`[Monitor] Alert already exists for ${content.id}, skipping duplicate creation.`);
+      console.log(`[Monitor] Alert already exists for content=${content.id}, skipping duplicate.`);
     } else {
-      const newAlert = new Alert(alertData);
-      await newAlert.save();
-      //console.log(`[Monitor] Unified Alert Created: ${newAlert.id} | ${title}`);
+      try {
+        const newAlert = new Alert(alertData);
+        await newAlert.save();
+        console.log(`[Monitor] ✅ Alert created: ${newAlert.id} | ${alertType} | ${finalRiskLevel} | ${content.platform} | @${content.author_handle || content.author}`);
 
-      // Send Email
-      if (settings.enable_email_alerts && settings.alert_emails?.length > 0) {
-        const emailData = {
-          risk_level: finalRiskLevel,
-          platform: content.platform,
-          author: content.author,
-          content_url: content.content_url,
-          description: description,
-          triggered_keywords: analysis?.triggered_keywords || [],
-          created_at: newAlert.created_at
-        };
-        await sendAlertEmail(settings.smtp_config, settings.alert_emails, emailData);
+        // Send Email
+        if (settings.enable_email_alerts && settings.alert_emails?.length > 0) {
+          const emailData = {
+            risk_level: finalRiskLevel,
+            platform: content.platform,
+            author: content.author,
+            content_url: content.content_url,
+            description: description,
+            triggered_keywords: analysis?.triggered_keywords || [],
+            created_at: newAlert.created_at
+          };
+          await sendAlertEmail(settings.smtp_config, settings.alert_emails, emailData);
+        }
+      } catch (alertErr) {
+        console.error(`[Monitor] ❌ Alert save failed for content=${content.id}: ${alertErr.message}`);
+        if (alertErr.errors) {
+          for (const [field, e] of Object.entries(alertErr.errors)) {
+            console.error(`  - ${field}: ${e.message}`);
+          }
+        }
       }
     }
 
@@ -1854,11 +1937,6 @@ const performFullAnalysis = async (content, settings, keywords, options = {}) =>
     // Explicitly allow High Risk AI content even if no specific "keyword" matched
     const isHighRiskAI = (alertRiskLevel === 'high');
 
-    // Deployment rule: only keep alerts for negative posts targeting Revanth Reddy.
-    if (!isNegativeRevanthTargetPost(content)) {
-      return false;
-    }
-
     // FORCE-ALLOW: Create alert for every post regardless of risk score (User Request)
     // The user explicitly requested: "dont skip or archive any alert if risk score is o also it is low alert"
     // So we bypass the filter below.
@@ -2087,7 +2165,7 @@ const rescanContent = async () => {
       };
 
       let existingAlert = await Alert.findOne({ content_id: content.id });
-      if (!existingAlert && isNegativeRevanthTargetPost(content) && (finalRiskLevel !== 'low' || velocity)) {
+      if (!existingAlert) {
         await new Alert(alertData).save();
         alertCount++;
       }
@@ -2103,6 +2181,22 @@ const rescanContent = async () => {
 
 const startMonitoring = async () => {
   //console.log("Starting monitoring loop...");
+
+  const normalizeCategoryKey = (rawCategory) => {
+    const normalized = String(rawCategory || 'others').toLowerCase().trim().replace(/[\s-]+/g, '_');
+    const valid = new Set(['political', 'communal', 'trouble_makers', 'defamation', 'narcotics', 'history_sheeters', 'others']);
+    return valid.has(normalized) ? normalized : 'others';
+  };
+
+  const isSourceDueByFrequency = (source, settings) => {
+    if (settings?.api_config?.monitoring?.enabled === false) return false;
+    const platform = String(source?.platform || '').toLowerCase();
+    const category = normalizeCategoryKey(source?.category);
+    const intervalMin = Number(settings?.api_config?.monitoring?.frequencies?.[platform]?.[category] || 60);
+    const intervalMs = Math.max(1, intervalMin) * 60 * 1000;
+    const lastChecked = source?.last_checked ? new Date(source.last_checked).getTime() : 0;
+    return !lastChecked || (Date.now() - lastChecked >= intervalMs);
+  };
 
   const runLoop = async () => {
     const loopStartedAt = Date.now();
@@ -2204,6 +2298,10 @@ const startMonitoring = async () => {
             return;
           }
 
+          if (!isSourceDueByFrequency(currentSource, settings)) {
+            return;
+          }
+
           if (source.platform === 'instagram') {
             const igHandle = source.identifier || source.display_name || 'unknown';
             // const igKeys = rapidApiInstagramService.getInstagramRapidApiKeys();
@@ -2220,10 +2318,21 @@ const startMonitoring = async () => {
       await autoArchiveEndedEvents();
       const activeEvents = await getActiveEvents();
 
-      for (const event of activeEvents) {
-        const pollMinutes = event.polling_interval_minutes || Math.max(3, Math.floor((settings.monitoring_interval_minutes || 5) / 2));
-        if (!shouldPollEvent(event, pollMinutes)) continue;
-        await scanEventOnce({ event, settings });
+      const eventsEnabled = settings?.api_config?.events?.enabled !== false;
+
+      if (eventsEnabled) {
+        for (const event of activeEvents) {
+          let pollMinutes = event.polling_interval_minutes;
+          if (!pollMinutes) {
+            const evtPlatforms = Array.isArray(event.platforms) && event.platforms.length > 0
+              ? event.platforms.map((p) => String(p).toLowerCase())
+              : ['x'];
+            const intervals = evtPlatforms.map((p) => Number(settings?.api_config?.events?.[p] || 60));
+            pollMinutes = Math.min(...intervals);
+          }
+          if (!shouldPollEvent(event, pollMinutes)) continue;
+          await scanEventOnce({ event, settings });
+        }
       }
 
       if (rapidApiKey && Date.now() - lastMediaBackfillAt > MEDIA_BACKFILL_INTERVAL_MS) {
