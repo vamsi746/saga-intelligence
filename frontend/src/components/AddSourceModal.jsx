@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Switch } from './ui/switch';
 import { Separator } from './ui/separator';
-import { Youtube, Twitter, Instagram, Facebook, Sparkles, CheckCircle, ChevronDown, ChevronUp, MinusCircle, PlusCircle, XCircle, MessageCircle, AlertTriangle } from 'lucide-react';
+import { Youtube, Twitter, Instagram, Facebook, Globe, FileText, Sparkles, CheckCircle, ChevronDown, ChevronUp, MinusCircle, PlusCircle, XCircle, MessageCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
@@ -27,7 +27,7 @@ const AddSourceModal = ({ open, onClose, onSuccess, initialData = null, onDirtyC
         briefSummary: '',
         whatsappNumbers: [],
         socialMedia: [],
-        previouslyDeletedProfiles: { x: [], facebook: [], instagram: [], youtube: [], whatsapp: [] },
+        previouslyDeletedProfiles: { x: [], facebook: [], instagram: [], youtube: [], dark_web: [], web_articles: [], whatsapp: [] },
         escalatedToIntermediariesCount: ''
     };
 
@@ -367,6 +367,8 @@ const AddSourceModal = ({ open, onClose, onSuccess, initialData = null, onDirtyC
         { value: 'x', label: 'X (Twitter)', icon: Twitter },
         { value: 'instagram', label: 'Instagram', icon: Instagram },
         { value: 'facebook', label: 'Facebook', icon: Facebook },
+        { value: 'dark_web', label: 'Dark Web Search Link', icon: Globe },
+        { value: 'web_articles', label: 'Web Articles', icon: FileText },
     ];
 
     const categories = [
@@ -593,6 +595,8 @@ const AddSourceModal = ({ open, onClose, onSuccess, initialData = null, onDirtyC
                                     {renderSocialTable('facebook', <Facebook className="w-4 h-4 text-blue-600" />, 'Facebook Profile', 'text-blue-600')}
                                     {renderSocialTable('instagram', <Instagram className="w-4 h-4 text-pink-500" />, 'Instagram Profile', 'text-pink-600')}
                                     {renderSocialTable('youtube', <Youtube className="w-4 h-4 text-red-500" />, 'YouTube Profile', 'text-red-600')}
+                                    {renderSocialTable('dark_web', <Globe className="w-4 h-4 text-violet-600" />, 'Dark Web Search Link', 'text-violet-600')}
+                                    {renderSocialTable('web_articles', <FileText className="w-4 h-4 text-emerald-600" />, 'Web Articles', 'text-emerald-600')}
                                 </div>
                                 <div className="h-px bg-slate-100 mt-4 mb-2" />
 
@@ -625,6 +629,8 @@ const AddSourceModal = ({ open, onClose, onSuccess, initialData = null, onDirtyC
                                         { key: 'facebook', label: 'Face Book' },
                                         { key: 'instagram', label: 'Instagram' },
                                         { key: 'youtube', label: 'Youtube' },
+                                        { key: 'dark_web', label: 'Dark Web Search Link' },
+                                        { key: 'web_articles', label: 'Web Articles' },
                                         { key: 'whatsapp', label: 'Whatsapp' }
                                     ].map(({ key, label }) => {
                                         const profiles = f.previouslyDeletedProfiles?.[key] || [];

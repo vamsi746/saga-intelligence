@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Scan, MessageSquare, ArrowRight, ScanSearch, Network } from 'lucide-react';
+import { Globe, Scan, MessageSquare, ArrowRight, ShieldAlert } from 'lucide-react';
 
 const tools = [
   {
@@ -29,6 +29,15 @@ const tools = [
     color: 'from-sky-500 to-sky-600',
     bg: 'bg-sky-50 dark:bg-sky-950/30',
     border: 'border-sky-200 dark:border-sky-800',
+  },
+  {
+    name: 'Dark Web Search',
+    description: 'Review suspicious dark web mentions, actors, and leaked political narratives in one search workspace.',
+    icon: ShieldAlert,
+    href: '/dark-web-search',
+    color: 'from-violet-600 to-fuchsia-600',
+    bg: 'bg-violet-50 dark:bg-violet-950/30',
+    border: 'border-violet-200 dark:border-violet-800',
   }
 ];
 

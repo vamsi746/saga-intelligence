@@ -9,7 +9,7 @@ const sourceSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ['youtube', 'x', 'instagram', 'facebook'],
+    enum: ['youtube', 'x', 'instagram', 'facebook', 'dark_web', 'web_articles'],
     required: true
   },
   identifier: {
