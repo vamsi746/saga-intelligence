@@ -142,8 +142,8 @@ const Layout = () => {
                 className="h-10 w-10 lg:h-14 lg:w-14 object-cover rounded shadow-lg"
               />
               <div className="flex flex-col items-start justify-start text-left leading-tight">
-                <h1 className="text-base lg:text-2xl font-heading font-bold text-white tracking-wider uppercase drop-shadow-md">SOC - EYE</h1>
-                <span className="hidden sm:block text-[9px] lg:text-[10px] text-blue-200 font-medium tracking-widest uppercase drop-shadow">Social media Observation & Cyber intelligence</span>
+                <h1 className="text-base lg:text-2xl font-heading font-bold text-white tracking-wider uppercase drop-shadow-md">BLURA SAGA</h1>
+                <span className="hidden sm:block text-[9px] lg:text-[10px] text-blue-200 font-medium tracking-widest uppercase drop-shadow">Sentiment and Good Will Analysis</span>
               </div>
             </div>
           </div>
