@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { geoMercator, geoPath, geoCentroid } from 'd3-geo';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../lib/api';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
-import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Tag } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
+import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Tag, MapPin, ArrowLeft, Crown } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { TELANGANA_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
 
 const MAHBUBNAGAR_PC = 'MAHBUBNAGAR';
 
@@ -156,8 +158,29 @@ const SentimentPie = ({ positive = 0, negative = 0, neutral = 0, size = 180 }) =
   );
 };
 
-const TelanganaMap = ({ embedded = false }) => {
+const SELECTED_AC_COLORS = { fill: '#3b82f6', hover: '#2563eb', stroke: '#1d4ed8' };
+
+const TelanganaMap = ({ embedded = false, highlightMinister = null }) => {
   const navigate = useNavigate();
+  const routerLocation = useLocation();
+
+  // Parse minister/constituency from URL params (standalone mode only)
+  const urlParams = useMemo(() => {
+    const p = new URLSearchParams(routerLocation.search);
+    return {
+      constituency: p.get('constituency') || null,
+      ministerName: p.get('minister') || null,
+      ministerRole: p.get('role') || null,
+      ministerDept: p.get('dept') || null,
+      ministerId: p.get('ministerId') || null,
+    };
+  }, [routerLocation.search]);
+
+  const selectedMinisterData = useMemo(() => {
+    if (!urlParams.ministerId) return null;
+    return TELANGANA_MINISTERS.find((m) => m.id === urlParams.ministerId) || null;
+  }, [urlParams.ministerId]);
+
   const [geojson, setGeojson] = useState(null);
   const [mapStats, setMapStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -166,7 +189,8 @@ const TelanganaMap = ({ embedded = false }) => {
   const [sentimentData, setSentimentData] = useState(null);
   const [categoryData, setCategoryData] = useState(null);
   const [grievanceStats, setGrievanceStats] = useState(null);
-  const [pcSummary, setPcSummary] = useState(null);
+  const [alertStats, setAlertStats] = useState(null);
+  const [selectedConstituencyData, setSelectedConstituencyData] = useState(null);
   const [hoverTweets, setHoverTweets] = useState([]);
   const [hoverTweetsLoading, setHoverTweetsLoading] = useState(false);
   const svgRef = useRef(null);
@@ -216,14 +240,24 @@ const TelanganaMap = ({ embedded = false }) => {
       api.get('/grievances/sentiment-analytics').catch(() => ({ data: null })),
       api.get('/grievances/category-analytics').catch(() => ({ data: null })),
       api.get('/grievances/dashboard-stats').catch(() => ({ data: null })),
-      api.get('/grievances/location-summary', { params: { location_city: 'mahabubnagar' } }).catch(() => ({ data: null })),
-    ]).then(([sentRes, catRes, statsRes, summaryRes]) => {
+      api.get('/alerts/dashboard-stats').catch(() => ({ data: null })),
+    ]).then(([sentRes, catRes, grievanceRes, alertRes]) => {
       setSentimentData(sentRes.data);
       setCategoryData(catRes.data);
-      setGrievanceStats(statsRes.data);
-      setPcSummary(summaryRes.data);
+      setGrievanceStats(grievanceRes.data);
+      setAlertStats(alertRes.data);
     });
   }, [embedded]);
+
+  // Fetch data for selected minister's constituency
+  useEffect(() => {
+    if (embedded || !urlParams.constituency) { setSelectedConstituencyData(null); return; }
+    api.get('/grievances/location-summary', {
+      params: { location_city: urlParams.constituency.toLowerCase() }
+    })
+      .then((res) => setSelectedConstituencyData(res.data || null))
+      .catch(() => setSelectedConstituencyData(null));
+  }, [embedded, urlParams.constituency]);
 
   const fetchMapStats = useCallback(async () => {
     setLoading(true);
@@ -288,38 +322,23 @@ const TelanganaMap = ({ embedded = false }) => {
 
   const byDistrict = useMemo(() => {
     const m = {};
-    const mahbubnagarAggregate = mapStats?.mahabubnagar
-      ? {
-        total: mapStats.mahabubnagar.total ?? mapStats.mahabubnagar.count ?? 0,
-        positive: mapStats.mahabubnagar.positive || 0,
-        negative: mapStats.mahabubnagar.negative || 0,
-        neutral: mapStats.mahabubnagar.neutral || 0,
-        categories: Array.isArray(mapStats.mahabubnagar.categories) ? mapStats.mahabubnagar.categories : []
-      }
-      : (pcSummary
-        ? {
-          total: pcSummary.total || 0,
-          positive: pcSummary.positive || 0,
-          negative: pcSummary.negative || 0,
-          neutral: pcSummary.neutral || 0,
-          categories: Array.isArray(pcSummary.categories) ? pcSummary.categories : []
-        }
-        : null);
-
-    if (mahbubnagarAggregate) {
+    // Use API aggregate key for Mahabubnagar district if available
+    if (mapStats?.mahabubnagar) {
+      const mah = mapStats.mahabubnagar;
       m['MAHABUBNAGAR'] = {
-        count: mahbubnagarAggregate.total ?? mahbubnagarAggregate.count ?? 0,
-        positive: mahbubnagarAggregate.positive || 0,
-        negative: mahbubnagarAggregate.negative || 0,
-        neutral: mahbubnagarAggregate.neutral || 0,
-        categories: Array.isArray(mahbubnagarAggregate.categories) ? [...mahbubnagarAggregate.categories] : []
+        count: mah.total ?? mah.count ?? 0,
+        positive: mah.positive || 0,
+        negative: mah.negative || 0,
+        neutral: mah.neutral || 0,
+        categories: Array.isArray(mah.categories) ? [...mah.categories] : []
       };
     }
 
     Object.entries(mapStats).forEach(([keyword, stats]) => {
+      if (keyword === 'mahabubnagar') return; // already handled above
       const dist = CITY_TO_DISTRICT[keyword];
       if (!dist) return;
-      if (mahbubnagarAggregate && dist === 'MAHABUBNAGAR') return;
+      if (m['MAHABUBNAGAR'] && dist === 'MAHABUBNAGAR') return;
       if (!m[dist]) m[dist] = { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] };
       m[dist].count += stats.count || stats.total || ((stats.negative || 0) + (stats.positive || 0) + (stats.neutral || 0));
       m[dist].positive += stats.positive || 0;
@@ -331,7 +350,7 @@ const TelanganaMap = ({ embedded = false }) => {
       d.categories = mergeTopicEntries(d.categories);
     });
     return m;
-  }, [mapStats, pcSummary]);
+  }, [mapStats]);
 
   const byAC = useMemo(() => {
     const m = {};
@@ -363,12 +382,11 @@ const TelanganaMap = ({ embedded = false }) => {
 
   const { projection, pathGenerator, dims } = useMemo(() => {
     if (!geojson) return { projection: null, pathGenerator: null, dims: { w: 800, h: 950 } };
-    const source = (embedded && pcFeatures) ? pcFeatures : geojson;
     const w = embedded ? 600 : 700;
     const h = embedded ? 600 : 850;
-    const proj = geoMercator().fitSize([w, h], source);
+    const proj = geoMercator().fitSize([w, h], geojson);
     return { projection: proj, pathGenerator: geoPath().projection(proj), dims: { w, h } };
-  }, [geojson, embedded, pcFeatures]);
+  }, [geojson, embedded]);
 
   const districtCentroids = useMemo(() => {
     if (!geojson || !projection) return {};
@@ -399,6 +417,20 @@ const TelanganaMap = ({ embedded = false }) => {
     });
     return out;
   }, [pcFeatures, projection]);
+
+  const allAcCentroids = useMemo(() => {
+    if (!geojson || !projection) return {};
+    const out = {};
+    geojson.features.forEach(f => {
+      const name = f.properties.AC_NAME;
+      if (name && !out[name]) {
+        const c = geoCentroid(f);
+        const px = projection(c);
+        if (px) out[name] = px;
+      }
+    });
+    return out;
+  }, [geojson, projection]);
 
   const districtFeatures = useMemo(() => {
     if (!geojson) return {};
@@ -439,159 +471,97 @@ const TelanganaMap = ({ embedded = false }) => {
   }, [tooltipPos.x]);
 
   const totalSentiment = useMemo(() => {
-    // Derive from mapStats.mahabubnagar (same source as AC map) for consistency
-    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
-    if (mah) return { positive: mah.positive || 0, negative: mah.negative || 0, neutral: mah.neutral || 0 };
-    if (pcSummary) {
-      return {
-        positive: pcSummary.positive || 0,
-        negative: pcSummary.negative || 0,
-        neutral: pcSummary.neutral || 0
-      };
+    // Use state-level distribution from sentiment analytics API
+    if (sentimentData?.distribution) {
+      const d = sentimentData.distribution;
+      return { positive: d.positive || 0, negative: d.negative || 0, neutral: d.neutral || 0 };
     }
-    return { positive: 0, negative: 0, neutral: 0 };
-  }, [pcSummary, mapStats, byDistrict]);
+    // Fallback: aggregate across all districts
+    const agg = { positive: 0, negative: 0, neutral: 0 };
+    Object.values(byDistrict).forEach(d => {
+      agg.positive += d.positive || 0;
+      agg.negative += d.negative || 0;
+      agg.neutral += d.neutral || 0;
+    });
+    return agg;
+  }, [sentimentData, byDistrict]);
 
   const totalGrievances = useMemo(() => {
-    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
-    if (mah) return mah.total ?? mah.count ?? 0;
-    if (pcSummary) return pcSummary.total || 0;
-    return 0;
-  }, [pcSummary, mapStats, byDistrict]);
+    if (grievanceStats?.all?.total != null) return grievanceStats.all.total;
+    if (grievanceStats?.total != null) return grievanceStats.total;
+    return (totalSentiment.positive || 0) + (totalSentiment.negative || 0) + (totalSentiment.neutral || 0);
+  }, [grievanceStats, totalSentiment]);
 
   const topCategories = useMemo(() => {
-    const mah = mapStats?.mahabubnagar || byDistrict['MAHABUBNAGAR'];
-    if (mah && Array.isArray(mah.categories) && mah.categories.length > 0) {
-      return mergeTopicEntries(mah.categories).slice(0, 6);
+    if (categoryData?.topics?.length > 0) return mergeTopicEntries(categoryData.topics).slice(0, 6);
+    if (categoryData?.categories?.length > 0) return mergeTopicEntries(categoryData.categories).slice(0, 6);
+    // Fallback: aggregate from all districts
+    const allCats = Object.values(byDistrict).flatMap(d => d.categories || []);
+    return mergeTopicEntries(allCats).slice(0, 6);
+  }, [categoryData, byDistrict]);
+
+  // Must be before early returns — hooks cannot be called conditionally
+  const activeConstituencyData = useMemo(() => {
+    if (!urlParams.constituency) return null;
+    if (selectedConstituencyData) {
+      return {
+        total: selectedConstituencyData.total || 0,
+        positive: selectedConstituencyData.positive || 0,
+        negative: selectedConstituencyData.negative || 0,
+        neutral: selectedConstituencyData.neutral || 0,
+        categories: selectedConstituencyData.categories || [],
+      };
     }
-    if (pcSummary && Array.isArray(pcSummary.categories)) {
-      return mergeTopicEntries(pcSummary.categories).slice(0, 6);
-    }
-    if (!mah || !Array.isArray(mah.categories)) return [];
-    return mergeTopicEntries(mah.categories).slice(0, 6);
-  }, [pcSummary, mapStats, byDistrict]);
+    const distKey = Object.keys(byDistrict).find(
+      (k) => k.toLowerCase().includes((urlParams.constituency || '').toLowerCase().slice(0, 5))
+    );
+    return distKey ? byDistrict[distKey] : null;
+  }, [urlParams.constituency, selectedConstituencyData, byDistrict]);
 
   if (!geojson) return <div className={cn('flex items-center justify-center', embedded ? 'h-full' : 'h-screen')}><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>;
 
-  /* ── Embedded: Mahabubnagar PC AC-level map ── */
-  if (embedded && pcFeatures) {
-    const hovAcName = hoveredDistrict;
-    const hovStats = hovAcName ? (byAC[hovAcName] || { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] }) : null;
-    const hovTopCats = hovStats?.categories || [];
-    const hovTotal = hovStats?.count || ((hovStats?.negative || 0) + (hovStats?.positive || 0) + (hovStats?.neutral || 0));
-    const totalPcGrievances = Object.values(byAC).reduce((s, st) => s + (st.count || 0), 0);
+  /* ── Embedded: full-state map, neutral by default, highlights selected minister's AC ── */
+  if (embedded) {
+    const hlConstituency = highlightMinister?.constituency || null;
+    const hlColor = highlightMinister?.color || null;
+    const hlCentroid = hlConstituency ? allAcCentroids[hlConstituency] : null;
 
     return (
-      <div className="relative w-full h-full" ref={containerRef}>
-        {loading && <div className="absolute top-2 right-2 z-10"><Loader2 className="h-4 w-4 animate-spin text-green-500" /></div>}
-        <div className="relative bg-white h-full overflow-hidden">
-          <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
-            {pcFeatures.features.map((f, i) => {
-              const acName = f.properties.AC_NAME;
-              const colors = getSentimentColors(byAC[acName]);
-              const isHov = hovAcName === acName;
-              return (
-                <path key={i} d={pathGenerator(f.geometry)}
-                  fill={isHov ? colors.hover : colors.fill}
-                  stroke={isHov ? '#0f172a' : colors.stroke}
-                  strokeWidth={isHov ? 2.5 : 1}
-                  opacity={hovAcName && !isHov ? 0.6 : 1}
-                  className="cursor-pointer transition-all duration-150"
-                  onMouseEnter={(e) => handleMouseMove(e, acName)}
-                  onMouseMove={(e) => handleMouseMove(e, acName)}
-                  onMouseLeave={scheduleHoverHide}
-                  onClick={() => handleDistrictClick(acName)} />
-              );
-            })}
-            {Object.entries(acCentroids).map(([acName, px]) => {
-              const count = (byAC[acName]?.count) || 0;
-              const isHov = hovAcName === acName;
-              return (
-                <g key={acName} className="pointer-events-none select-none">
-                  <text x={px[0]} y={px[1] - (count > 0 ? 10 : 3)} textAnchor="middle"
-                    style={{ fontSize: isHov ? '14px' : '11px', fontWeight: 700, fill: '#ffffff',
-                      stroke: getSentimentColors(byAC[acName]).stroke, strokeWidth: 0.5, paintOrder: 'stroke',
-                      textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>{acName.replace(/ \(SC\)$/, '')}</text>
-                  {count > 0 && (<>
-                    <rect x={px[0] - 12} y={px[1] + 1} width={24} height={15} rx={4} fill="#0f172a" opacity={0.75} />
-                    <text x={px[0]} y={px[1] + 12} textAnchor="middle" style={{ fontSize: '10px', fontWeight: 700, fill: '#fff' }}>{count}</text>
-                  </>)}
-                </g>
-              );
-            })}
-            {pcFeatures.features.map((f, i) => (
-              <path key={`ob-${i}`} d={pathGenerator(f.geometry)} fill="none" stroke="#14532d" strokeWidth={2} className="pointer-events-none" />
-            ))}
-          </svg>
-          <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-green-200 rounded-lg px-2.5 py-1.5 text-[10px] text-gray-600 shadow-sm">
-            <span className="font-bold text-green-700">{pcFeatures.features.length} ACs</span>
-          </div>
-          {hovAcName && (
-            <div
-              className="absolute z-30"
-              onMouseEnter={clearHoverHideTimer}
-              onMouseLeave={scheduleHoverHide}
-              style={{
-              left: getTooltipLeft(280),
-              top: getTooltipTop(230), maxWidth: 280,
-            }}>
-              <div className="bg-white border border-gray-200 text-xs rounded-xl shadow-xl overflow-hidden">
-                <div className="bg-green-600 text-white px-3 py-1.5 flex items-center justify-between">
-                  <span className="font-bold text-[12px]">{hovAcName}</span>
-                  <div className="flex items-center gap-2">
-                    {hovTotal > 0 && <span className="text-[10px] text-white/80">{hovTotal} grievance{hovTotal !== 1 ? 's' : ''}</span>}
-                    <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded">AC · Kodangal</span>
-                  </div>
-                </div>
-                <div className="p-2.5">
-                  {!hovStats || hovTotal === 0 ? (
-                    <div className="text-gray-400 italic text-[11px]">No grievances detected</div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 text-[10px] mb-1.5">
-                        <span className="inline-flex items-center gap-1 text-red-600">
-                          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />{hovStats.negative} grievance{hovStats.negative !== 1 ? 's' : ''}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-green-600">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />{hovStats.positive || 0}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-gray-500">
-                          <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />{hovStats.neutral || 0}
-                        </span>
-                      </div>
-
-                      {hovTotal > 0 && (
-                        <div className="flex h-1.5 rounded-full overflow-hidden mb-2.5">
-                          {hovStats.negative > 0 && <div className="bg-red-500" style={{ width: `${(hovStats.negative / hovTotal) * 100}%` }} />}
-                          {hovStats.neutral > 0 && <div className="bg-gray-300" style={{ width: `${(hovStats.neutral / hovTotal) * 100}%` }} />}
-                          {hovStats.positive > 0 && <div className="bg-green-500" style={{ width: `${(hovStats.positive / hovTotal) * 100}%` }} />}
-                        </div>
-                      )}
-
-                      {hovTopCats.length > 0 ? (
-                        <div>
-                          <div className="text-[9px] font-semibold text-red-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Grievance Topics
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {hovTopCats.slice(0, 5).map(([cat, cnt]) => (
-                              <span key={cat} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ${getTopicStyle(cat)}`}>
-                                <Tag className="h-2.5 w-2.5" />
-                                {formatTopicLabel(cat)} <span className="font-bold">({cnt})</span>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-[10px] text-gray-500 italic mt-1">No grievance topics found</div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+      <div className="relative w-full h-full bg-white" ref={containerRef}>
+        {loading && <div className="absolute top-2 right-2 z-10"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>}
+        <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
+          {geojson.features.map((f, i) => {
+            const acName = f.properties.AC_NAME;
+            const isHL = hlConstituency && acName?.toLowerCase() === hlConstituency.toLowerCase();
+            return (
+              <path key={i} d={pathGenerator(f.geometry)}
+                fill={isHL ? hlColor : '#f1f5f9'}
+                stroke={isHL ? hlColor : '#94a3b8'}
+                strokeWidth={isHL ? 2 : 0.7}
+                className="transition-all duration-200" />
+            );
+          })}
+          {/* Label on highlighted constituency */}
+          {hlCentroid && (
+            <g className="pointer-events-none select-none">
+              <text x={hlCentroid[0]} y={hlCentroid[1] - 2} textAnchor="middle"
+                style={{ fontSize: '10px', fontWeight: 800, fill: '#fff', stroke: hlColor, strokeWidth: 3, paintOrder: 'stroke' }}>
+                {hlConstituency}
+              </text>
+            </g>
           )}
-        </div>
+        </svg>
+        {/* Legend strip */}
+        {hlConstituency ? (
+          <div className="absolute bottom-2 left-2 rounded-lg px-2 py-1 text-[9px] text-white shadow"
+            style={{ background: hlColor }}>
+            <MapPin className="h-2.5 w-2.5 inline mr-1" />{hlConstituency}
+          </div>
+        ) : (
+          <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-lg px-2 py-1 text-[9px] text-slate-500 shadow-sm">
+            Telangana · {geojson.features.length} Constituencies
+          </div>
+        )}
       </div>
     );
   }
@@ -599,6 +569,23 @@ const TelanganaMap = ({ embedded = false }) => {
   // ═══════════════════════════════════════════════
   //  STANDALONE: Constituency Overview Dashboard
   // ═══════════════════════════════════════════════
+
+  // When a minister is selected, use their constituency data; else use default Kodangal/Mahabubnagar
+  const activeConstituency = urlParams.constituency || 'Kodangal';
+  const isMinisterView = !!urlParams.constituency;
+
+  const displaySentiment = isMinisterView && activeConstituencyData
+    ? { positive: activeConstituencyData.positive, negative: activeConstituencyData.negative, neutral: activeConstituencyData.neutral }
+    : totalSentiment;
+
+  const displayTotal = isMinisterView && activeConstituencyData
+    ? activeConstituencyData.total
+    : totalGrievances;
+
+  const displayCategories = isMinisterView && activeConstituencyData
+    ? mergeTopicEntries(activeConstituencyData.categories).slice(0, 6)
+    : topCategories;
+
   const hovStats = hoveredDistrict ? (byDistrict[hoveredDistrict] || byAC[hoveredDistrict] || { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] }) : null;
   const isHovAc = hoveredDistrict && AC_NAMES.includes(hoveredDistrict);
   const topCats = hovStats?.categories || [];
@@ -608,38 +595,131 @@ const TelanganaMap = ({ embedded = false }) => {
     <div className="p-4 lg:p-6 min-h-screen bg-slate-50" ref={containerRef}>
       {/* Header */}
       <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kodangal Constituency Overview Dashboard</h1>
+        <div className="flex items-center gap-3">
+          {isMinisterView && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Dashboard
+            </button>
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isMinisterView
+                ? `${activeConstituency} Constituency Overview`
+                : 'Telangana State Intelligence Dashboard'}
+            </h1>
+            {isMinisterView && urlParams.ministerName && (
+              <p className="text-sm text-slate-500 mt-0.5">
+                {urlParams.ministerName} · {urlParams.ministerRole}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {loading && <Loader2 className="h-5 w-5 animate-spin text-gray-400" />}
           <Button onClick={() => navigate('/dashboard')} className="gap-2 bg-slate-800 hover:bg-slate-700 text-white">
             <BarChart3 className="h-4 w-4" />
-            View More Details
+            {isMinisterView ? 'Back to Dashboard' : 'View More Details'}
           </Button>
         </div>
       </div>
+
+      {/* State-level metrics strip */}
+      {!isMinisterView && (
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          <Card className="p-3 border-0 shadow-md bg-gradient-to-br from-blue-50 to-blue-100">
+            <div className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">Total Grievances</div>
+            <div className="text-2xl font-bold text-blue-700 mt-0.5">{totalGrievances.toLocaleString()}</div>
+          </Card>
+          <Card className="p-3 border-0 shadow-md bg-gradient-to-br from-green-50 to-green-100">
+            <div className="text-[10px] font-semibold text-green-500 uppercase tracking-wide">Positive Sentiment</div>
+            <div className="text-2xl font-bold text-green-700 mt-0.5">
+              {totalGrievances > 0 ? Math.round((totalSentiment.positive / totalGrievances) * 100) : 0}%
+            </div>
+          </Card>
+          <Card className="p-3 border-0 shadow-md bg-gradient-to-br from-red-50 to-red-100">
+            <div className="text-[10px] font-semibold text-red-500 uppercase tracking-wide">Active Alerts</div>
+            <div className="text-2xl font-bold text-red-700 mt-0.5">{alertStats?.total || alertStats?.count || 0}</div>
+          </Card>
+          <Card className="p-3 border-0 shadow-md bg-gradient-to-br from-purple-50 to-purple-100">
+            <div className="text-[10px] font-semibold text-purple-500 uppercase tracking-wide">Constituencies</div>
+            <div className="text-2xl font-bold text-purple-700 mt-0.5">{geojson?.features?.length || 119}</div>
+          </Card>
+        </div>
+      )}
 
       {/* Main 2-column: Left analytics | Right map */}
       <div className="flex gap-5 items-start">
         {/* LEFT PANEL */}
         <div className="w-[340px] flex-shrink-0 space-y-4">
           
-          {/* CM Photo */}
+          {/* Minister / CM Photo Card */}
           <Card className="overflow-hidden border-0 shadow-lg">
             <div className="relative">
-              <img
-                src="/CM.webp"
-                alt="CM Revanth Reddy"
-                className="w-full object-cover object-top"
-                style={{ height: '320px' }}
+              {selectedMinisterData?.image ? (
+                <img
+                  src={selectedMinisterData.image}
+                  alt={selectedMinisterData.shortName}
+                  className="w-full object-cover object-top"
+                  style={{ height: '320px' }}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+                />
+              ) : (
+                <img
+                  src="/CM.webp"
+                  alt="CM Revanth Reddy"
+                  className="w-full object-cover object-top"
+                  style={{ height: '320px' }}
+                />
+              )}
+              {/* Fallback avatar for ministers without photos */}
+              {selectedMinisterData && (
+                <div
+                  className="w-full items-center justify-center"
+                  style={{
+                    height: '320px',
+                    display: 'none',
+                    background: `linear-gradient(135deg, ${selectedMinisterData.color}cc, ${selectedMinisterData.color})`,
+                  }}
+                >
+                  <div className="text-8xl font-black text-white/80">
+                    {getMinisterInitials(selectedMinisterData.shortName)}
+                  </div>
+                </div>
+              )}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: selectedMinisterData
+                    ? `linear-gradient(to top, ${selectedMinisterData.color}e6 0%, ${selectedMinisterData.color}30 40%, transparent 100%)`
+                    : 'linear-gradient(to top, rgba(20,83,45,0.9) 0%, rgba(20,83,45,0.2) 40%, transparent 100%)',
+                }}
               />
-              {/* gradient overlay at bottom */}
-              <div className="absolute inset-0 bg-gradient-to-t from-green-900/90 via-green-900/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-4">
-                <h3 className="text-xl font-extrabold text-white leading-tight drop-shadow">Revanth Reddy</h3>
-                <p className="text-green-200 text-sm font-medium mt-0.5">Chief Minister, Telangana</p>
-                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[11px] font-semibold border border-white/30">MLA · Kodangal Constituency</span>
+                <h3 className="text-xl font-extrabold text-white leading-tight drop-shadow">
+                  {selectedMinisterData?.shortName || 'Revanth Reddy'}
+                </h3>
+                <p className="text-white/80 text-sm font-medium mt-0.5">
+                  {selectedMinisterData?.role || 'Chief Minister'}, Telangana
+                </p>
+                {selectedMinisterData && (
+                  <p className="text-white/70 text-[11px] mt-0.5">{selectedMinisterData.department}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[11px] font-semibold border border-white/30">
+                    <MapPin className="h-2.5 w-2.5" />
+                    {isMinisterView ? `MLA · ${activeConstituency} Constituency` : 'Telangana State · 119 Constituencies'}
+                  </span>
+                  {selectedMinisterData && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-[11px] font-semibold border border-white/30">
+                      <Crown className="h-2.5 w-2.5" />
+                      Activity {selectedMinisterData.activityScore}%
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
@@ -648,30 +728,39 @@ const TelanganaMap = ({ embedded = false }) => {
           <Card className="p-4 border-0 shadow-md">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-slate-700">Sentiment Analysis</h4>
-              <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">Kodangal</span>
+              <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full border"
+                style={
+                  selectedMinisterData
+                    ? { color: selectedMinisterData.color, borderColor: `${selectedMinisterData.color}50`, background: `${selectedMinisterData.color}10` }
+                    : { color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }
+                }
+              >
+                {isMinisterView ? activeConstituency : 'Telangana State'}
+              </span>
             </div>
             <div className="flex justify-center">
               <SentimentPie
-                positive={totalSentiment.positive || 0}
-                negative={totalSentiment.negative || 0}
-                neutral={totalSentiment.neutral || 0}
+                positive={displaySentiment.positive || 0}
+                negative={displaySentiment.negative || 0}
+                neutral={displaySentiment.neutral || 0}
                 size={180}
               />
             </div>
             <div className="flex justify-center gap-4 mt-3">
               <div className="flex items-center gap-1.5 text-xs">
                 <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                <span className="text-green-700 font-semibold">{totalSentiment.positive || 0}</span>
+                <span className="text-green-700 font-semibold">{displaySentiment.positive || 0}</span>
                 <span className="text-slate-400">Positive</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-                <span className="text-red-700 font-semibold">{totalSentiment.negative || 0}</span>
+                <span className="text-red-700 font-semibold">{displaySentiment.negative || 0}</span>
                 <span className="text-slate-400">Negative</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
                 <Minus className="h-3.5 w-3.5 text-slate-400" />
-                <span className="text-slate-600 font-semibold">{totalSentiment.neutral || 0}</span>
+                <span className="text-slate-600 font-semibold">{displaySentiment.neutral || 0}</span>
                 <span className="text-slate-400">Neutral</span>
               </div>
             </div>
@@ -684,30 +773,30 @@ const TelanganaMap = ({ embedded = false }) => {
               <h4 className="text-xs font-semibold text-slate-700 mb-2">Grievance Summary</h4>
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-blue-50 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-blue-700">{totalGrievances}</div>
+                  <div className="text-lg font-bold text-blue-700">{displayTotal}</div>
                   <div className="text-[9px] text-blue-500 font-medium">Total</div>
                 </div>
                 <div className="bg-green-50 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-green-700">{totalSentiment.positive || 0}</div>
+                  <div className="text-lg font-bold text-green-700">{displaySentiment.positive || 0}</div>
                   <div className="text-[9px] text-green-500 font-medium">Positive</div>
                 </div>
                 <div className="bg-amber-50 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-amber-700">{totalSentiment.neutral || 0}</div>
+                  <div className="text-lg font-bold text-amber-700">{displaySentiment.neutral || 0}</div>
                   <div className="text-[9px] text-amber-500 font-medium">Moderate</div>
                 </div>
                 <div className="bg-red-50 rounded-lg p-2 text-center">
-                  <div className="text-lg font-bold text-red-700">{totalSentiment.negative || 0}</div>
+                  <div className="text-lg font-bold text-red-700">{displaySentiment.negative || 0}</div>
                   <div className="text-[9px] text-red-500 font-medium">Negative</div>
                 </div>
               </div>
             </Card>
 
             {/* Top Categories */}
-            {topCategories.length > 0 && (
+            {displayCategories.length > 0 && (
               <Card className="p-3 border-0 shadow-md flex-1">
                 <h4 className="text-xs font-semibold text-slate-700 mb-2">Top Topics</h4>
                 <div className="flex flex-wrap gap-1.5">
-                  {topCategories.map(([cat, cnt]) => {
+                  {displayCategories.map(([cat, cnt]) => {
                     const style = getTopicStyle(cat);
                     return (
                       <span key={cat} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ${style}`}>
@@ -732,108 +821,92 @@ const TelanganaMap = ({ embedded = false }) => {
               className="w-full h-full"
               style={{ maxHeight: '82vh' }}
             >
-              {/* Constituency polygons */}
+              {/* Constituency polygons — all districts colored by sentiment */}
               {geojson.features.map((f, i) => {
-                const { DIST_NAME, PC_NAME, AC_NAME } = f.properties;
-                const isMahbubnagar = PC_NAME === MAHBUBNAGAR_PC;
-                const hoverKey = isMahbubnagar ? AC_NAME : DIST_NAME;
+                const { DIST_NAME, AC_NAME } = f.properties;
+                const isSelectedAC = urlParams.constituency &&
+                  AC_NAME?.toLowerCase() === urlParams.constituency.toLowerCase();
+                const hoverKey = isSelectedAC ? AC_NAME : DIST_NAME;
                 const isHov = hoveredDistrict === hoverKey;
                 const distStats = byDistrict[DIST_NAME];
-                const hasData = distStats && (distStats.count > 0);
-                // Only Mahabubnagar PC gets green; all other districts stay gray/white
-                let colors;
-                if (isMahbubnagar) {
-                  colors = hasData ? getSentimentColors(distStats) : { fill: '#bbf7d0', hover: '#86efac', stroke: '#22c55e' };
-                } else {
-                  colors = { fill: '#f8fafc', hover: '#f1f5f9', stroke: '#cbd5e1' };
-                }
+
+                const colors = isSelectedAC ? SELECTED_AC_COLORS : getSentimentColors(distStats);
                 return (
                   <path key={i} d={pathGenerator(f.geometry)}
                     fill={isHov ? colors.hover : colors.fill}
-                    stroke={isHov ? '#0f172a' : isMahbubnagar ? '#15803d' : colors.stroke}
-                    strokeWidth={isHov ? 2.5 : isMahbubnagar ? 1.4 : 0.5}
-                    opacity={hoveredDistrict && !isHov ? 0.6 : 1}
+                    stroke={isHov ? '#0f172a' : isSelectedAC ? SELECTED_AC_COLORS.stroke : colors.stroke}
+                    strokeWidth={isHov ? 2.5 : isSelectedAC ? 2 : 0.8}
+                    opacity={hoveredDistrict && !isHov ? 0.65 : 1}
                     className="cursor-pointer transition-all duration-150"
                     onMouseEnter={(e) => handleMouseMove(e, hoverKey)}
                     onMouseMove={(e) => handleMouseMove(e, hoverKey)}
                     onMouseLeave={scheduleHoverHide}
-                  onClick={() => handleDistrictClick(hoverKey)} />
+                    onClick={() => handleDistrictClick(hoverKey)} />
                 );
               })}
-
-              {/* Mahabubnagar PC bold outline */}
-              {geojson.features
-                .filter(f => f.properties.PC_NAME === MAHBUBNAGAR_PC)
-                .map((f, i) => (
-                  <path key={`so-${i}`} d={pathGenerator(f.geometry)} fill="none"
-                    stroke="#15803d" strokeWidth={2.5} className="pointer-events-none" />
-                ))
-              }
-
-              {/* AC Labels inside Mahabubnagar PC */}
-              {Object.entries(acCentroids).map(([acName, px]) => (
-                <g key={`ac-${acName}`} className="pointer-events-none select-none">
-                  <text
-                    x={px[0]} y={px[1]}
-                    textAnchor="middle"
-                    style={{
-                      fontSize: acName === 'Kodangal' ? '10px' : '8px',
-                      fontWeight: acName === 'Kodangal' ? 800 : 600,
-                      fill: acName === 'Kodangal' ? '#14532d' : '#166534',
-                      stroke: '#dcfce7',
-                      strokeWidth: 2.5, paintOrder: 'stroke',
-                    }}
-                  >{acName}{acName === 'Kodangal' ? ' ★' : ''}</text>
-                </g>
-              ))}
-
-              {/* Kodangal Constituency total count badge */}
-              {(() => {
-                const mahStats = byDistrict['MAHABUBNAGAR'];
-                const totalCount = mahStats?.count || 0;
-                if (totalCount === 0 || !acCentroids['Kodangal']) return null;
-                const [cx, cy] = acCentroids['Kodangal'];
-                const badgeW = String(totalCount).length * 8 + 16;
-                return (
-                  <g className="pointer-events-none select-none">
-                    <rect x={cx - badgeW / 2} y={cy + 8} width={badgeW} height={18} rx={5} fill="#15803d" />
-                    <text x={cx} y={cy + 20} textAnchor="middle" style={{ fontSize: '11px', fontWeight: 800, fill: '#fff' }}>{totalCount}</text>
-                  </g>
-                );
-              })()}
 
               {/* District Labels */}
-              {Object.entries(districtCentroids).map(([name, px]) => {
-                const info = districtFeatures[name];
-                const isMahbubnagarDist = info?.hasMahbubnagar;
-                // Skip district labels for Mahabubnagar PC area — AC labels handle it
-                if (isMahbubnagarDist) return null;
-                return (
-                  <g key={name} className="pointer-events-none select-none">
-                    <text
-                      x={px[0]} y={px[1] - 2}
-                      textAnchor="middle"
-                      style={{
-                        fontSize: '9px',
-                        fontWeight: 500,
-                        fill: '#94a3b8',
-                        stroke: 'white',
-                        strokeWidth: 3, paintOrder: 'stroke',
-                      }}
-                    >{name}</text>
-                  </g>
-                );
-              })}
+              {Object.entries(districtCentroids).map(([name, px]) => (
+                <g key={name} className="pointer-events-none select-none">
+                  <text
+                    x={px[0]} y={px[1] - 2}
+                    textAnchor="middle"
+                    style={{
+                      fontSize: '9px',
+                      fontWeight: 500,
+                      fill: '#475569',
+                      stroke: 'white',
+                      strokeWidth: 3, paintOrder: 'stroke',
+                    }}
+                  >{name}</text>
+                </g>
+              ))}
             </svg>
 
             {/* Summary strip */}
-            <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm border border-green-200 rounded-lg px-3 py-2 text-[11px] text-gray-600 shadow-sm">
-              <span className="font-bold text-green-700">Kodangal Constituency · CM Revanth Reddy</span>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="inline-block w-2 h-2 rounded-sm bg-green-500" />
-                <span className="text-[10px] text-slate-500">Kodangal & surrounding ACs · Hover to see details</span>
-              </div>
+            <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm border border-green-200 rounded-lg px-3 py-2 text-[11px] text-gray-600 shadow-sm max-w-[240px]">
+              {isMinisterView && urlParams.constituency ? (
+                <>
+                  <span className="font-bold text-blue-700">{urlParams.constituency} Constituency</span>
+                  {urlParams.ministerName && (
+                    <div className="text-[10px] text-slate-500 mt-0.5 truncate">{urlParams.ministerName}</div>
+                  )}
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="inline-block w-2 h-2 rounded-sm bg-blue-500" />
+                    <span className="text-[10px] text-slate-500">Highlighted in blue · Hover to inspect</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="font-bold text-slate-700">Telangana State · All Districts</span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="inline-block w-2 h-2 rounded-sm bg-green-500" />
+                    <span className="text-[10px] text-slate-500">Colored by sentiment · Hover to inspect</span>
+                  </div>
+                </>
+              )}
             </div>
+
+            {/* Selected AC label pin (for non-Mahabubnagar constituencies) */}
+            {isMinisterView && urlParams.constituency && (() => {
+              const px = allAcCentroids[urlParams.constituency];
+              if (!px) return null;
+              return (
+                <div
+                  className="absolute pointer-events-none z-20"
+                  style={{ left: `${(px[0] / dims.w) * 100}%`, top: `${(px[1] / dims.h) * 100}%`, transform: 'translate(-50%, -100%)' }}
+                >
+                  <div
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold text-white shadow-lg border border-white/30"
+                    style={{ background: selectedMinisterData?.color || SELECTED_AC_COLORS.fill }}
+                  >
+                    <MapPin className="h-2.5 w-2.5" />
+                    {urlParams.constituency}
+                  </div>
+                  <div className="w-0 h-0 mx-auto" style={{ borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `6px solid ${selectedMinisterData?.color || SELECTED_AC_COLORS.fill}` }} />
+                </div>
+              );
+            })()}
 
             {/* Hover tooltip */}
             {hoveredDistrict && (
@@ -848,25 +921,28 @@ const TelanganaMap = ({ embedded = false }) => {
                 }}
               >
                 {/* Header */}
-                <div className={cn(
-                  'px-3.5 py-2 flex items-center justify-between',
-                  (isHovAc || districtFeatures[hoveredDistrict]?.hasMahbubnagar) ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-800'
-                )}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm">{hoveredDistrict}</span>
-                    {hovTotal > 0 && (
-                      <span className={cn('text-[10px] font-medium', (isHovAc || districtFeatures[hoveredDistrict]?.hasMahbubnagar) ? 'text-white/80' : 'text-gray-500')}>
-                        {hovTotal} grievance{hovTotal !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  {isHovAc && (
-                    <Badge className="bg-white/20 text-white text-[10px] border-0">AC · Kodangal</Badge>
-                  )}
-                  {!isHovAc && districtFeatures[hoveredDistrict]?.hasMahbubnagar && (
-                    <Badge className="bg-white/20 text-white text-[10px] border-0">CM's Constituency · Kodangal</Badge>
-                  )}
-                </div>
+                {(() => {
+                  const distS = hovStats ? getSentimentColors(hovStats) : SENTIMENT_TIERS.none;
+                  const hasGrievances = hovTotal > 0;
+                  return (
+                    <div className="px-3.5 py-2 flex items-center justify-between"
+                      style={{ background: hasGrievances ? distS.fill : '#f1f5f9', color: hasGrievances ? '#fff' : '#374151' }}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">{hoveredDistrict}</span>
+                        {hovTotal > 0 && (
+                          <span className="text-[10px] font-medium opacity-80">
+                            {hovTotal} grievance{hovTotal !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {hovTotal > 0 && (
+                        <Badge className="bg-white/20 text-[10px] border-0" style={{ color: hasGrievances ? distS.fill : '#374151', background: 'rgba(255,255,255,0.25)' }}>
+                          District
+                        </Badge>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="p-3">
                   {!hovStats || hovTotal === 0 ? (
@@ -919,7 +995,13 @@ const TelanganaMap = ({ embedded = false }) => {
           
           {/* Bottom legend */}
           <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500 justify-center">
-            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded border border-gray-300" style={{ background: '#f8fafc' }} /> Other Districts</span>
+            {isMinisterView && urlParams.constituency && (
+              <span className="flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded" style={{ background: SELECTED_AC_COLORS.fill }} />
+                <span className="font-semibold text-blue-600">{urlParams.constituency} (Selected)</span>
+              </span>
+            )}
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded border border-gray-300" style={{ background: SENTIMENT_TIERS.none.fill }} /> No Data</span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded" style={{ background: SENTIMENT_TIERS.low.fill }} /> Low Positive</span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded" style={{ background: SENTIMENT_TIERS.medium.fill }} /> Medium Positive</span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded" style={{ background: SENTIMENT_TIERS.high.fill }} /> High Positive</span>

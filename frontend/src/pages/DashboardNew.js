@@ -7,12 +7,14 @@ import {
   Shield, AlertTriangle, Send,
   Users, ChevronDown, Loader2, Info, Clock, FileText, MessageSquare,
   ArrowRight, RefreshCw, Sparkles, X, Video, Pencil, Play, ExternalLink, Settings,
-  BarChart3, Tag
+  BarChart3, Tag, MapPin, Star, TrendingUp, TrendingDown, Minus, Crown
 } from 'lucide-react';
 import { Card } from '../components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useDashboard } from '../contexts/DashboardContext';
+import { TELANGANA_MINISTERS, TOP_10_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
+import api from '../lib/api';
 
 // Lazy load heavy components
 const GlanceChat = lazy(() => import('../components/dashboard/GlanceChat'));
@@ -422,10 +424,290 @@ const DroneViewStrip = () => {
   );
 };
 
+// ─── Ministers Panel ────────────────────────────────────────────────────────
+const MinistersPanel = ({ selectedId, onSelect }) => {
+  const navigate = useNavigate();
+  const scrollRef = useRef(null);
+  const top10Ids = new Set(TOP_10_MINISTERS.map((m) => m.id));
+
+  const scroll = (dir) => {
+    if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 260, behavior: 'smooth' });
+  };
+
+
+  return (
+    <Card className="border border-border/50 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border/30 bg-gradient-to-r from-emerald-500/8 to-transparent">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+            <Crown className="h-3.5 w-3.5 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="text-[13px] font-semibold text-foreground">Telangana Cabinet Ministers</h3>
+            <p className="text-[10px] text-muted-foreground">Congress Party · {TELANGANA_MINISTERS.length} Ministers · Click to view constituency</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-full px-2 py-0.5">
+            <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500" />
+            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">Top 10 Active</span>
+          </div>
+          <button onClick={() => scroll(-1)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+            <ChevronDown className="h-4 w-4 rotate-90" />
+          </button>
+          <button onClick={() => scroll(1)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+            <ChevronDown className="h-4 w-4 -rotate-90" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable row */}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 p-4 overflow-x-auto custom-scrollbar"
+        style={{ scrollbarWidth: 'thin' }}
+      >
+        {TELANGANA_MINISTERS.map((minister) => {
+          const isTop10 = top10Ids.has(minister.id);
+          const rank = TOP_10_MINISTERS.findIndex((m) => m.id === minister.id) + 1;
+          const isSelected = selectedId === minister.id;
+          return (
+            <button
+              key={minister.id}
+              onClick={() => onSelect(isSelected ? null : minister)}
+              className={`flex-shrink-0 w-[180px] flex flex-col items-center gap-2 p-3 rounded-xl border transition-all duration-200 bg-card group cursor-pointer text-left relative overflow-hidden
+                ${isSelected
+                  ? 'border-2 shadow-lg scale-[1.04]'
+                  : 'border-border/50 hover:border-emerald-400/60 hover:shadow-md hover:scale-[1.03]'}`}
+              style={isSelected ? { borderColor: minister.color, boxShadow: `0 4px 20px ${minister.color}30` } : {}}
+            >
+              {/* Top-10 ribbon */}
+              {isTop10 && (
+                <div
+                  className="absolute top-0 right-0 px-1.5 py-0.5 text-[8px] font-bold text-white rounded-bl-lg"
+                  style={{ background: minister.color }}
+                >
+                  #{rank} Active
+                </div>
+              )}
+
+              {/* Avatar */}
+              <div className="relative mt-1">
+                <div
+                  className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all group-hover:ring-4"
+                  style={{ ringColor: minister.color, borderColor: minister.color }}
+                >
+                  <Avatar className="w-full h-full">
+                    <AvatarImage
+                      src={minister.image}
+                      alt={minister.shortName}
+                      className="object-cover object-top"
+                    />
+                    <AvatarFallback
+                      className="text-white text-base font-bold"
+                      style={{ background: minister.color }}
+                    >
+                      {getMinisterInitials(minister.shortName)}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+                {/* Activity indicator */}
+                {isTop10 && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-card flex items-center justify-center">
+                    <TrendingUp className="h-2 w-2 text-white" />
+                  </div>
+                )}
+              </div>
+
+              {/* Name */}
+              <div className="w-full text-center">
+                <p className="text-[11px] font-bold text-foreground leading-tight group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors line-clamp-2">
+                  {minister.shortName}
+                </p>
+                <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1">
+                  {minister.role === 'Chief Minister' || minister.role === 'Deputy Chief Minister'
+                    ? minister.role
+                    : minister.department}
+                </p>
+              </div>
+
+              {/* Constituency chip */}
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
+                style={{ borderColor: `${minister.color}40`, color: minister.color, background: `${minister.color}10` }}
+              >
+                <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+                <span className="truncate">{minister.constituency}</span>
+              </div>
+
+              {/* Activity bar */}
+              <div className="w-full">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[8px] text-muted-foreground">Activity</span>
+                  <span className="text-[8px] font-bold" style={{ color: minister.color }}>{minister.activityScore}%</span>
+                </div>
+                <div className="h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${minister.activityScore}%`, background: minister.color }}
+                  />
+                </div>
+              </div>
+
+              {/* Selected indicator */}
+              {isSelected && (
+                <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
+                  style={{ background: minister.color }}>
+                  Selected ✓
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+};
+
+// ─── Mini Sentiment Donut (for minister detail panel) ───────────────────────
+const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
+  const total = positive + negative + neutral;
+  if (total === 0) return <div className="text-xs text-muted-foreground italic text-center py-4">No data</div>;
+  const data = [
+    { name: 'Positive', value: positive, color: '#10b981' },
+    { name: 'Neutral', value: neutral, color: '#f59e0b' },
+    { name: 'Negative', value: negative, color: '#ef4444' },
+  ].filter(d => d.value > 0);
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative w-[80px] h-[80px] shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" paddingAngle={2} strokeWidth={0}>
+              {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-sm font-bold text-foreground leading-none">{total}</span>
+          <span className="text-[7px] text-muted-foreground">total</span>
+        </div>
+      </div>
+      <div className="space-y-1 flex-1">
+        {[
+          { label: 'Positive', value: positive, color: '#10b981' },
+          { label: 'Neutral', value: neutral, color: '#f59e0b' },
+          { label: 'Negative', value: negative, color: '#ef4444' },
+        ].map(row => (
+          <div key={row.label} className="flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: row.color }} />
+              <span className="text-muted-foreground">{row.label}</span>
+            </div>
+            <span className="font-bold" style={{ color: row.color }}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Minister Detail Panel (shows in dashboard when minister is selected) ────
+const MinisterDetailPanel = ({ minister, data }) => {
+  const sentiment = { positive: data?.positive || 0, negative: data?.negative || 0, neutral: data?.neutral || 0 };
+  const total = data?.total || 0;
+  const categories = useMemo(() => {
+    if (!data?.categories) return [];
+    const map = {};
+    (data.categories).forEach(item => {
+      const [name, cnt] = Array.isArray(item) ? item : [item?.name, item?.count || 0];
+      if (name) map[name] = (map[name] || 0) + Number(cnt);
+    });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [data]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Minister identity card */}
+      <Card className="overflow-hidden border-0 shadow-md">
+        <div className="relative h-[200px]">
+          <Avatar className="w-full h-full rounded-none">
+            <AvatarImage src={minister.image} alt={minister.shortName} className="object-cover object-top w-full h-full rounded-none" />
+            <AvatarFallback className="w-full h-full rounded-none text-5xl font-black text-white" style={{ background: minister.color }}>
+              {getMinisterInitials(minister.shortName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${minister.color}ee 0%, ${minister.color}20 50%, transparent 100%)` }} />
+          <div className="absolute bottom-0 left-0 right-0 p-3">
+            <p className="text-base font-black text-white leading-tight drop-shadow">{minister.shortName}</p>
+            <p className="text-white/80 text-[11px] mt-0.5">{minister.role}</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold border border-white/30">
+                <MapPin className="h-2 w-2" />{minister.constituency}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sentiment */}
+      <Card className="p-3 border-0 shadow-sm">
+        <p className="text-[11px] font-semibold text-foreground mb-2">Sentiment Analysis</p>
+        <MiniSentimentPie {...sentiment} />
+      </Card>
+
+      {/* Stats */}
+      <Card className="p-3 border-0 shadow-sm">
+        <p className="text-[11px] font-semibold text-foreground mb-2">Grievance Summary</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {[
+            { label: 'Total', value: total, bg: 'bg-blue-50', text: 'text-blue-700' },
+            { label: 'Positive', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
+            { label: 'Moderate', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
+            { label: 'Negative', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
+          ].map(s => (
+            <div key={s.label} className={`${s.bg} rounded-lg p-2 text-center`}>
+              <div className={`text-base font-bold ${s.text}`}>{s.value}</div>
+              <div className={`text-[9px] ${s.text} opacity-70 font-medium`}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Topics */}
+      {categories.length > 0 && (
+        <Card className="p-3 border-0 shadow-sm">
+          <p className="text-[11px] font-semibold text-foreground mb-2">Top Topics</p>
+          <div className="space-y-1">
+            {categories.map(([cat, cnt]) => (
+              <div key={cat} className="flex items-center justify-between text-[10px]">
+                <span className="text-muted-foreground truncate flex-1">{cat}</span>
+                <span className="font-bold text-foreground ml-2">{cnt}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const { dashboardData, loading, fetchDashboardData, refreshDashboard, hasCachedData } = useDashboard();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isGlanceOpen, setIsGlanceOpen] = useState(false);
+  const [selectedMinister, setSelectedMinister] = useState(null);
+  const [ministerData, setMinisterData] = useState(null);
+  const [ministerDataLoading, setMinisterDataLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedMinister) { setMinisterData(null); return; }
+    setMinisterDataLoading(true);
+    api.get('/grievances/location-summary', { params: { location_city: selectedMinister.constituency.toLowerCase() } })
+      .then(r => setMinisterData(r.data || null))
+      .catch(() => setMinisterData(null))
+      .finally(() => setMinisterDataLoading(false));
+  }, [selectedMinister]);
 
   const [alertType, setAlertType] = useState('active');
   const [alertPlatform, setAlertPlatform] = useState('all');
@@ -516,6 +798,9 @@ const Dashboard = () => {
         </button>
       </div>
 
+      {/* Ministers Panel */}
+      <MinistersPanel selectedId={selectedMinister?.id} onSelect={setSelectedMinister} />
+
       {/* Grievance Sentiment Analytics */}
       {sentimentAnalytics && (() => {
         const dist = sentimentAnalytics.distribution || {};
@@ -597,23 +882,54 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Kodangal Constituency — In-depth AC Map */}
-            <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-1">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-green-100 rounded-lg">
-                    <BarChart3 className="h-3.5 w-3.5 text-green-600" />
+            {/* Constituency Map / Minister Detail */}
+            {selectedMinister ? (
+              /* ── Minister selected: full detail layout ── */
+              <div className="lg:col-span-1 border border-border/50 rounded-xl overflow-hidden shadow-sm"
+                style={{ borderColor: `${selectedMinister.color}40` }}>
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30"
+                  style={{ background: `linear-gradient(to right, ${selectedMinister.color}12, transparent)` }}>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg" style={{ background: `${selectedMinister.color}20` }}>
+                      <BarChart3 className="h-3.5 w-3.5" style={{ color: selectedMinister.color }} />
+                    </div>
+                    <h3 className="text-[13px] font-semibold text-foreground">{selectedMinister.constituency} Constituency</h3>
                   </div>
-                  <h3 className="text-[13px] font-semibold text-foreground">Kodangal Constituency</h3>
+                  <div className="flex items-center gap-2">
+                    {ministerDataLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                    <button onClick={() => setSelectedMinister(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors">✕ Clear</button>
+                  </div>
                 </div>
-                <span className="text-[10px] text-muted-foreground font-medium">CM Revanth Reddy · Kodangal · 7 ACs</span>
-              </div>
-              <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
-                <div className="w-full h-[480px]">
-                  <TelanganaMap embedded />
+                <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
+                  {/* Left: detail panel */}
+                  <div className="w-[220px] flex-shrink-0 overflow-y-auto p-3 border-r border-border/30 custom-scrollbar">
+                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
+                  </div>
+                  {/* Right: map */}
+                  <div className="flex-1 min-w-0">
+                    <TelanganaMap embedded highlightMinister={selectedMinister} />
+                  </div>
                 </div>
               </div>
-            </Card>
+            ) : (
+              /* ── Default: neutral constituency map ── */
+              <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-1">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-slate-100 rounded-lg">
+                      <BarChart3 className="h-3.5 w-3.5 text-slate-500" />
+                    </div>
+                    <h3 className="text-[13px] font-semibold text-foreground">Telangana Constituencies</h3>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-medium">Select a minister to highlight constituency</span>
+                </div>
+                <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
+                  <div className="w-full h-[480px]">
+                    <TelanganaMap embedded />
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         );
       })()}
