@@ -16,10 +16,8 @@ const { syncLegacyFieldsFromWorkflow } = require('./grievanceWorkflowService');
 const { analyzeContent } = require('./analysisService');
 const translationService = require('./translationService');
 
-// ═══════════════════════════════════════════════════════════════
-//          LOCATION EXTRACTION (backend-side)
-// ═══════════════════════════════════════════════════════════════
 const LOCATION_SERVICE_URL = process.env.LOCATION_SERVICE_URL || 'http://178.255.44.130:5003';
+const locationExtractionService = require('./locationExtractionService');
 const { ALL_TELANGANA_LOCATIONS } = require('../config/telanganaLocations');
 
 // ── City / Town → District mapping for keyword detection ──
@@ -146,348 +144,31 @@ const appendSourceTagOnce = (source, tag) => {
     return tokens.join('+');
 };
 
-const isMahbubnagarTaggedLocation = (location = {}) => {
-    const city = String(location.city || '').toLowerCase();
-    const district = String(location.district || '').toLowerCase();
-    const constituency = String(location.constituency || '').toLowerCase();
-    const keyword = String(location.keyword_matched || '').toLowerCase();
-    const acByCity = findCanonicalMahbubnagarAcFromLooseValue(city);
-    const acByDistrict = findCanonicalMahbubnagarAcFromLooseValue(district);
-    const acByKeyword = findCanonicalMahbubnagarAcFromLooseValue(keyword);
-    return (
-        city.includes('mahabubnagar') || city.includes('mahbubnagar') ||
-        district.includes('mahabubnagar') || district.includes('mahbubnagar') ||
-        constituency.includes('mahabubnagar') || constituency.includes('mahbubnagar') ||
-        !!findCanonicalMahbubnagarAc(constituency) ||
-        !!acByCity || !!acByDistrict || !!acByKeyword
-    );
-};
 
-const findCanonicalMahbubnagarAc = (value = '') => {
-    const normalized = normalizeCompact(value);
-    if (!normalized) return null;
-    for (const ac of MAHABUBNAGAR_ACS) {
-        if (normalizeCompact(ac) === normalized) return ac;
-    }
-    return null;
-};
 
-const findCanonicalMahbubnagarAcFromLooseValue = (value = '') => {
-    const lower = String(value || '').toLowerCase().trim();
-    if (!lower) return null;
 
-    const canonical = findCanonicalMahbubnagarAc(lower);
-    if (canonical) return canonical;
 
-    for (const [ac, aliases] of Object.entries(MAHABUBNAGAR_AC_ALIASES)) {
-        for (const alias of aliases) {
-            if (normalizeCompact(alias) === normalizeCompact(lower)) {
-                return ac;
-            }
-        }
-    }
-    return null;
-};
 
-const findMahbubnagarAcInText = (text = '') => {
-    if (!text || typeof text !== 'string') return null;
-    const lower = text.toLowerCase();
-    let bestMatch = null;
 
-    for (const [canonical, aliases] of Object.entries(MAHABUBNAGAR_AC_ALIASES)) {
-        for (const alias of aliases) {
-            const aliasPattern = escapeRegex(alias.toLowerCase()).replace(/\s+/g, '[\\s_-]+');
-            const regex = new RegExp(`(^|[^a-z0-9_])([@#]?${aliasPattern})(?=$|[^a-z0-9_])`, 'ig');
-            let match;
-            while ((match = regex.exec(lower)) !== null) {
-                const prefixLength = (match[1] || '').length;
-                const startIndex = match.index + prefixLength;
-                const matchedToken = match[2] || '';
-                const baseToken = matchedToken.replace(/^[@#]/, '');
-                if (!baseToken) continue;
 
-                const beforeChar = startIndex > 0 ? lower[startIndex - 1] : '';
-                const afterIndex = startIndex + matchedToken.length;
-                const afterChar = afterIndex < lower.length ? lower[afterIndex] : '';
-                const validStart = !beforeChar || TOKEN_BOUNDARY_REGEX.test(beforeChar);
-                const validEnd = !afterChar || TOKEN_BOUNDARY_REGEX.test(afterChar);
-                if (!validStart || !validEnd) continue;
-
-                const candidate = {
-                    constituency: canonical,
-                    matched: matchedToken.trim(),
-                    index: startIndex,
-                    length: baseToken.length
-                };
-                if (
-                    !bestMatch ||
-                    candidate.index < bestMatch.index ||
-                    (candidate.index === bestMatch.index && candidate.length > bestMatch.length)
-                ) {
-                    bestMatch = candidate;
-                }
-            }
-        }
-    }
-
-    return bestMatch;
-};
-
-const getNextMahbubnagarAcByRoundRobin = async ({ dryRun = false, rrState = null } = {}) => {
-    if (dryRun) {
-        if (!rrState || typeof rrState.nextIndex !== 'number') {
-            return MAHABUBNAGAR_ACS[0];
-        }
-        const constituency = MAHABUBNAGAR_ACS[rrState.nextIndex % MAHABUBNAGAR_ACS.length];
-        rrState.nextIndex += 1;
-        return constituency;
-    }
-
-    const updated = await GrievanceSettings.findOneAndUpdate(
-        { id: 'grievance_settings' },
-        {
-            $setOnInsert: { id: 'grievance_settings' },
-            $inc: { mahabubnagar_ac_rr_index: 1 }
-        },
-        {
-            new: true,
-            upsert: true,
-            setDefaultsOnInsert: true
-        }
-    );
-    const indexValue = Number(updated?.mahabubnagar_ac_rr_index || 1);
-    return MAHABUBNAGAR_ACS[(indexValue - 1) % MAHABUBNAGAR_ACS.length];
-};
-
-const getMahbubnagarConstituencyFromText = async (text = '') => {
-    if (!text || typeof text !== 'string') return null;
-    const candidates = [text];
-
-    if (TELUGU_SCRIPT_REGEX.test(text)) {
-        try {
-            const translated = await translationService.translate(text, 'en', 'auto');
-            if (translated && translated.trim()) {
-                candidates.push(translated);
-            }
-        } catch (error) {
-            const now = Date.now();
-            if (now - lastTeluguTranslationWarningAt >= TELUGU_TRANSLATION_WARNING_THROTTLE_MS) {
-                console.warn(`[GrievanceLocation] Telugu translation failed for AC detection: ${error.message}`);
-                lastTeluguTranslationWarningAt = now;
-            }
-        }
-    }
-
-    for (const candidate of candidates) {
-        const match = findMahbubnagarAcInText(candidate);
-        if (match) return match;
-    }
-    return null;
-};
-
-const isStateCapitalLocation = (location = {}) => {
-    const city = String(location.city || '').toLowerCase();
-    const district = String(location.district || '').toLowerCase();
-    const keyword = String(location.keyword_matched || '').toLowerCase();
-    return (
-        city.includes('hyderabad') || city.includes('telangana') ||
-        district.includes('hyderabad') || district.includes('telangana') ||
-        keyword.includes('hyderabad') || keyword.includes('telangana')
-    );
-};
-
-const enrichWithMahbubnagarConstituency = async (baseLocation = {}, text = '', options = {}) => {
-    const keywordMatch = await getMahbubnagarConstituencyFromText(text);
-
-    // Explicit AC mention should always win over any fallback strategy.
-    if (keywordMatch) {
-        return {
-            city: baseLocation.city || keywordMatch.constituency,
-            district: baseLocation.district || MAHABUBNAGAR_AC_TO_DISTRICT[keywordMatch.constituency] || null,
-            constituency: keywordMatch.constituency,
-            keyword_matched: keywordMatch.matched,
-            lat: baseLocation.lat ?? null,
-            lng: baseLocation.lng ?? null,
-            confidence: Math.max(Number(baseLocation.confidence || 0), 0.9),
-            source: appendSourceTagOnce(baseLocation.source || 'keyword_match', 'mahabubnagar_ac_keyword')
-        };
-    }
-
-    // State-capital (Hyderabad/Telangana) grievances → round-robin to Mahabubnagar ACs
-    if (!isMahbubnagarTaggedLocation(baseLocation) && isStateCapitalLocation(baseLocation)) {
-        const location = { ...baseLocation };
-        // No specific AC → round-robin distribute
-        location.constituency = await getNextMahbubnagarAcByRoundRobin(options);
-        location.source = appendSourceTagOnce(location.source || '', 'mahabubnagar_ac_round_robin');
-        location.confidence = Math.max(Number(location.confidence || 0), 0.6);
-        return location;
-    }
-
-    if (!isMahbubnagarTaggedLocation(baseLocation)) return baseLocation;
-
-    const location = {
-        city: baseLocation.city || 'Mahabubnagar',
-        district: baseLocation.district || 'Mahabubnagar',
-        constituency: baseLocation.constituency || null,
-        keyword_matched: baseLocation.keyword_matched || null,
-        lat: baseLocation.lat ?? null,
-        lng: baseLocation.lng ?? null,
-        confidence: baseLocation.confidence ?? null,
-        source: baseLocation.source || 'location_service'
-    };
-
-    const canonicalExisting = findCanonicalMahbubnagarAc(location.constituency);
-    if (canonicalExisting) {
-        location.constituency = canonicalExisting;
-        return location;
-    }
-
-    location.constituency = await getNextMahbubnagarAcByRoundRobin(options);
-    location.source = appendSourceTagOnce(location.source, 'mahabubnagar_ac_round_robin');
-    location.confidence = Math.max(Number(location.confidence || 0), 0.6);
-    return location;
-};
 
 /**
  * LOCAL keyword-based location detection from text content.
  * Scans each word/phrase against ALL_TELANGANA_LOCATIONS set.
  * Returns { city, district, keyword_matched, confidence, source } or null.
  */
-const detectLocationFromText = (text) => {
-    if (!text || typeof text !== 'string') return null;
-    const lower = text.toLowerCase();
 
-    // Try multi-word matches first (e.g. "anandpur sahib", "dera bassi")
-    for (const keyword of KEYWORD_LIST) {
-        if (keyword.length < 3) continue;
-        // Word-boundary match to avoid partial matches inside other words
-        const idx = lower.indexOf(keyword);
-        if (idx === -1) continue;
-        // Check word boundaries
-        const before = idx > 0 ? lower[idx - 1] : ' ';
-        const after = idx + keyword.length < lower.length ? lower[idx + keyword.length] : ' ';
-        const isWordBoundary = /[\s,.!?;:()\-#@"']/.test(before) || idx === 0;
-        const isWordEnd = /[\s,.!?;:()\-#@"']/.test(after) || (idx + keyword.length === lower.length);
-        if (isWordBoundary && isWordEnd) {
-            const district = KEYWORD_TO_DISTRICT[keyword] || null;
-            // Capitalize first letter of each word for display
-            const city = keyword.replace(/\b\w/g, c => c.toUpperCase());
-            return {
-                city,
-                district,
-                keyword_matched: keyword,
-                confidence: 0.85,
-                source: 'keyword_match',
-            };
-        }
-    }
-    return null;
-};
-
-const detectLocationFromContent = async (text) => {
-    const directMatch = detectLocationFromText(text);
-    if (directMatch) return directMatch;
-
-    if (!text || !TELUGU_SCRIPT_REGEX.test(text)) return null;
-
-    try {
-        const translated = await translationService.translate(text, 'en', 'auto');
-        if (!translated || !translated.trim()) return null;
-
-        const translatedMatch = detectLocationFromText(translated);
-        if (!translatedMatch) return null;
-
-        return {
-            ...translatedMatch,
-            source: appendSourceTagOnce(translatedMatch.source, 'translated_keyword_match')
-        };
-    } catch (error) {
-        const now = Date.now();
-        if (now - lastTeluguTranslationWarningAt >= TELUGU_TRANSLATION_WARNING_THROTTLE_MS) {
-            console.warn(`[GrievanceLocation] Telugu translation failed for keyword detection: ${error.message}`);
-            lastTeluguTranslationWarningAt = now;
-        }
-        return null;
-    }
-};
 
 /**
  * Extract location from a grievance's text / user profile and persist it.
- * STEP 1: Try local keyword matching against Telangana location database (instant, no network).
- * STEP 2: If no keyword match, call the external location-extraction micro-service.
- * Non-blocking: failures are logged but never throw.
+ * Refactored to use locationExtractionService.
  */
 const extractAndSaveLocation = async (grievanceId, text, postedBy = {}) => {
     try {
         if (!text || !text.trim()) return;
 
-        // ── STEP 1: Local keyword-based detection (fast, no network) ──
-        const keywordResult = await detectLocationFromContent(text);
-        if (keywordResult) {
-            const locationWithConstituency = await enrichWithMahbubnagarConstituency({
-                city: keywordResult.city,
-                district: keywordResult.district,
-                constituency: null,
-                keyword_matched: keywordResult.keyword_matched,
-                lat: null,
-                lng: null,
-                confidence: keywordResult.confidence,
-                source: keywordResult.source
-            }, text);
-
-            await Grievance.findOneAndUpdate(
-                { id: grievanceId },
-                {
-                    $set: {
-                        'detected_location.city': locationWithConstituency.city,
-                        'detected_location.district': locationWithConstituency.district,
-                        'detected_location.constituency': locationWithConstituency.constituency,
-                        'detected_location.keyword_matched': locationWithConstituency.keyword_matched,
-                        'detected_location.lat': locationWithConstituency.lat,
-                        'detected_location.lng': locationWithConstituency.lng,
-                        'detected_location.confidence': locationWithConstituency.confidence,
-                        'detected_location.source': locationWithConstituency.source,
-                    }
-                }
-            );
-            console.log(`[GrievanceLocation] Keyword match for ${grievanceId}: ${locationWithConstituency.city} (${locationWithConstituency.source})`);
-            return;
-        }
-
-        // ── STEP 2: External micro-service fallback ──
-        const userLocation = postedBy.location || '';
-        const userBio = postedBy.bio || postedBy.description || '';
-        const hashtags = (text.match(/#\w+/g) || []).join(' ');
-
-        const payload = {
-            items: [{
-                id: grievanceId,
-                text,
-                user_location: userLocation,
-                user_bio: userBio,
-                hashtags,
-            }]
-        };
-
-        const res = await axios.post(
-            `${LOCATION_SERVICE_URL}/api/extract-locations-batch`,
-            payload,
-            { timeout: 10000 }
-        );
-
-        const results = res.data?.results || [];
-        const loc = results.find(r => r.id === grievanceId);
-        if (!loc || !loc.location_found) return;
-        const locationWithConstituency = await enrichWithMahbubnagarConstituency({
-            city: loc.city || null,
-            district: loc.district || null,
-            constituency: loc.constituency || null,
-            keyword_matched: loc.keyword_matched || null,
-            lat: loc.lat || null,
-            lng: loc.lng || null,
-            confidence: loc.confidence || null,
-            source: loc.source || null
-        }, text);
+        const locationWithConstituency = await locationExtractionService.extractLocation(text, postedBy);
+        if (!locationWithConstituency) return;
 
         await Grievance.findOneAndUpdate(
             { id: grievanceId },
@@ -565,7 +246,7 @@ const reprocessMahbubnagarMappedGrievances = async ({
                 source: grievance?.detected_location?.source || null
             };
 
-            const after = await enrichWithMahbubnagarConstituency(before, text, { dryRun, rrState });
+            const after = await locationExtractionService.enrichWithMahbubnagarConstituency(before, text, { dryRun, rrState });
             const changed = (
                 before.city !== after.city ||
                 before.district !== after.district ||
@@ -620,23 +301,29 @@ const reprocessMahbubnagarMappedGrievances = async ({
  * Updates the grievance document in-place with analysis results.
  * Runs async (fire-and-forget) so it doesn't block ingestion.
  */
-const analyzeGrievanceContent = async (grievanceId, text, platform) => {
+const analyzeGrievanceContent = async (grievanceId, text, platform, postedBy = {}, metadata = {}) => {
     try {
         if (!text || !text.trim()) return;
         const analysisData = await analyzeContent(text, {
             platform: platform || 'x',
-            skipForensics: true
+            skipForensics: true,
+            postedBy: postedBy,
+            mentions: metadata.mentions || [],
+            taggedAccount: metadata.taggedAccount || null
         });
         if (!analysisData) return;
 
         // Use dynamically generated sentiment from AI analysis, fallback to neutral
         const sentiment = analysisData.sentiment || 'neutral';
+        const loc = analysisData.detected_location;
 
-        await Grievance.findOneAndUpdate(
+        const updatedGrievance = await Grievance.findOneAndUpdate(
             { id: grievanceId },
             {
                 $set: {
                     'analysis.sentiment': sentiment,
+                    'analysis.target_party': analysisData.target_party,
+                    'analysis.stance': analysisData.stance,
                     'analysis.risk_level': analysisData.risk_level,
                     'analysis.risk_score': analysisData.risk_score,
                     'analysis.category': analysisData.category,
@@ -651,10 +338,45 @@ const analyzeGrievanceContent = async (grievanceId, text, platform) => {
                     'analysis.highlights': analysisData.highlights || [],
                     'analysis.llm_analysis': analysisData.llm_analysis || null,
                     'analysis.forensic_results': analysisData.forensic_results || null,
-                    'analysis.analyzed_at': new Date()
+                    'analysis.analyzed_at': new Date(),
+                    // Also save the location if found during analysis
+                    ...(loc && {
+                        'detected_location.city': loc.city,
+                        'detected_location.district': loc.district,
+                        'detected_location.constituency': loc.constituency,
+                        'detected_location.keyword_matched': loc.keyword_matched,
+                        'detected_location.lat': loc.lat,
+                        'detected_location.lng': loc.lng,
+                        'detected_location.confidence': loc.confidence,
+                        'detected_location.source': loc.source,
+                    }),
+                    // Save linked persons
+                    'linked_persons': analysisData.linked_persons || []
                 }
-            }
+            },
+            { new: true }
         );
+
+        // --- MEDIA ARCHIVAL (NEW) ---
+        if (updatedGrievance && updatedGrievance.content?.media?.length > 0) {
+            try {
+                console.log(`[GrievanceMedia] Archiving media for ${grievanceId}...`);
+                const archivedMedia = await archiveTwitterMedia(
+                    updatedGrievance.content.media, 
+                    grievanceId, 
+                    { postUrl: updatedGrievance.tweet_url }
+                );
+                if (archivedMedia) {
+                    await Grievance.updateOne(
+                        { id: grievanceId },
+                        { $set: { 'content.media': archivedMedia } }
+                    );
+                    console.log(`[GrievanceMedia] Successfully archived media for ${grievanceId}`);
+                }
+            } catch (mediaErr) {
+                console.warn(`[GrievanceMedia] Archival failed for ${grievanceId}: ${mediaErr.message}`);
+            }
+        }
         console.log(`[GrievanceAnalysis] Completed for ${grievanceId}: ${sentiment} (${analysisData.risk_level || 'low'})`);
     } catch (err) {
         console.error(`[GrievanceAnalysis] Failed for ${grievanceId}: ${err.message}`);

@@ -21,6 +21,10 @@ async function categorizeText(text, retryCount = 1) {
     model: ''
   };
 
+  const { ALL_LEADERS } = require('../config/politicalData');
+  const targetGroupStr = ALL_LEADERS.map(l => `- ${l.name} (${l.role}, ${l.constituency})`).join('\n');
+  const targetHandlesStr = ALL_LEADERS.flatMap(l => l.handles || []).join(', ');
+
   if (currentProvider === 'ollama') {
     config.baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
     config.model = process.env.OLLAMA_MODEL || "llama3.1";
@@ -39,7 +43,6 @@ async function categorizeText(text, retryCount = 1) {
 
   // Dynamic Prompt Construction
   const categories = mappingService.mappingData.category_mappings || [];
-  console.log(`[LLM] Constructing prompt with ${categories.length} allowed categories.`);
   const categoryListStr = categories.map(c => `- ${c.category_id}`).join('\n');
   const definitionsStr = categories.map(c => `
 - ${c.category_id}
@@ -47,94 +50,85 @@ async function categorizeText(text, retryCount = 1) {
 `).join('\n');
 
   const prompt = `
-You are an elite multilingual content moderation expert specializing in the Indian sociopolitical context.
-You have TWO jobs:
-1. CONTENT MODERATION: Select EXACTLY ONE moderation category from the provided list.
-2. GRIEVANCE TOPIC: Classify what real-world issue this post is about.
-3. SENTIMENT ANALYSIS: Determine the emotional tone of the post.
+You are an elite multilingual content moderation and political intelligence expert for the Telangana region. 
+You are working for the **INC (Congress) Party** led by **A. Revanth Reddy (Chief Minister)**.
 
 ════════════════════════
-JOB 1: CONTENT MODERATION
+CLIENT PERSPECTIVE (CRITICAL)
 ════════════════════════
-ANALYSIS RULES:
-- TRANSLITERATION HANDLING: If the text is an Indian language written in English script (e.g., Romanized Telugu/Hindi), you MUST first correctly translate the intent. Do not assume it is English. 
-- INTENT OVER SURFACE: Identify threats, slurs, and violent intent even when expressed in informal or transliterated slang.
-- CONTEXT: Distinguish between neutral political dissent and targeted harm.
-- RELIGIOUS GREETINGS ARE HARMLESS: Common Indian greetings and blessings like "जय माता दी", "Jai Mata Di", "Jai Shri Ram", "Allahu Akbar", "Waheguru Ji", "Om Namah Shivaya", "Radhe Radhe", "Har Har Mahadev" etc. are NORMAL everyday expressions. They are NOT communal content, NOT hate speech, NOT threats. Tagging a political handle while saying a greeting does NOT make it communal or political.
-- BENIGN CONTENT DEFAULT: If a post is just a greeting, blessing, compliment, congratulation, or casual conversation with NO harmful intent → ALWAYS classify as 'Normal'. Do NOT overthink or force a harmful category onto harmless text.
+Our "PROTECTED GROUP" includes these leaders and their party:
+${targetGroupStr}
+Handles: ${targetHandlesStr}
 
-AVAILABLE CATEGORIES:
+Our "OPPOSITION" includes: 
+1. BRS Party (KCR, KTR, Harish Rao).
+2. BJP Party (Narendra Modi, Amit Shah, Kishan Reddy, Bandi Sanjay).
+3. Any supporters or entities attacking the INC Government.
+
+════════════════════════
+JOB 1: CONTENT MODERATION & CATEGORIZATION
+════════════════════════
+Select EXACTLY ONE moderation category:
 ${categoryListStr}
 
-CATEGORY DEFINITIONS:
+DEFINITIONS:
 ${definitionsStr}
 
-- Select EXACTLY ONE category ID from the list above.
-- If the content is harmless/neutral/a greeting/a blessing → 'Normal'.
-- ONLY use harmful categories (Hate_Speech, Communal_Violence, etc.) when there is CLEAR, EXPLICIT harmful content — slurs, threats, incitement, abuse. Never flag benign text.
+════════════════════════
+SENTIMENT ANALYSIS LOGIC (STEP-BY-STEP)
+════════════════════════
+To determine sentiment, you MUST follow this 3-step internal logic:
+
+STEP 1: Identify the "TARGET" of the post.
+- Who is being criticized or praised? 
+- Is it OUR GROUP (INC/Revanth Reddy) or the OPPOSITION (BRS/BJP/KCR/Modi)?
+
+STEP 2: Identify the "STANCE".
+- Is the content Support/Praise or Criticism/Attack/Sarcasm/Exposing Scams?
+
+STEP 3: Map to Client Sentiment.
+- [Target: OUR GROUP] + [Stance: Support] = **positive**
+- [Target: OUR GROUP] + [Stance: Criticism] = **negative**
+- [Target: OPPOSITION] + [Stance: Support] = **negative** (Bad for us)
+- [Target: OPPOSITION] + [Stance: Criticism/Sarcasm] = **positive** (Good for us)
+
+*NOTE*: If the post is a general civic complaint (Roads, Water, etc.) with no party mentioned, use standard sentiment (Complaint = Negative).
 
 ════════════════════════
-JOB 2: GRIEVANCE TOPIC CLASSIFICATION
+JOB 3: GRIEVANCE TOPIC
 ════════════════════════
-Classify the content into EXACTLY ONE of these predefined grievance topics.
-
-ALLOWED GRIEVANCE TOPICS:
-- Political Criticism — criticism of politicians, political parties, government policies, elections
-- Hate Speech — communal hate, caste slurs, religious targeting, extremism
-- Public Complaint — general citizen complaints about public services (electricity, water, sanitation, hospitals, schools, pensions etc.)
-- Corruption Complaint — allegations of bribery, scams, misuse of funds, nepotism
-- Government Praise — content appreciating or praising government work, schemes, or leaders
-- Traffic Complaint — traffic jams, signal issues, road rage, challan disputes, parking problems
-- Public Nuisance — noise pollution, illegal dumping, encroachments, stray animals, eve teasing
-- Road & Infrastructure — potholes, broken roads, damaged bridges, street light issues, construction delays
-- Law & Order — police inaction, crime reports, drug menace, theft, safety concerns
-- Normal — neutral content with no complaint, grievance, or praise (greetings, casual chat, memes, jokes, blessings)
-
-RULES:
-- Select EXACTLY ONE topic from the list above. Do NOT invent new topics.
-- If the post is a greeting, blessing, joke, meme, or casual chat → "Normal".
-- Focus on the GROUND-LEVEL PROBLEM, not who is tagged.
-- If someone tags a politician about power cuts → "Public Complaint" (NOT Political Criticism).
-- If content has political criticism AND a specific complaint, pick the more specific complaint topic.
-- Default to "Normal" when unsure.
+ALLOWED TOPICS:
+- Political Criticism (Attacking us or opposition)
+- Hate Speech
+- Public Complaint (Civic issues)
+- Corruption Complaint
+- Government Praise
+- Traffic Complaint
+- Public Nuisance
+- Road & Infrastructure
+- Law & Order
+- Normal
 
 ════════════════════════
-JOB 3: SENTIMENT ANALYSIS
+JOB 4: RISK SCORING (0-100)
 ════════════════════════
-Identify the sentiment:
-- 'positive': Praise, gratitude, celebrations, congratulations, or polite greetings.
-- 'negative': Complaints, frustration, anger, reporting problems, or criticism.
-- 'neutral': Informational content, questions, or vague statements without strong emotion.
-
-════════════════════════
-JOB 4: RISK SCORING
-════════════════════════
-Assess the physical and societal risk level of this content on a scale of 0-100.
-
-SCORING GUIDELINES:
-- 0-15: Completely harmless (greetings, blessings, casual chat, neutral info)
-- 15-39: LOW risk (mild criticism, general complaints, sarcasm, memes without harm)
-- 40-69: MEDIUM risk (strong political attacks, communal tensions, aggressive language, misinformation, harassment)
-- 70-100: HIGH risk (direct threats, incitement to violence, hate speech targeting communities, doxxing, sexual violence, imminent physical threat, bomb/attack threats, calls for mass violence)
-
-RISK LEVEL RULES:
-- risk_level must be exactly one of: "low", "medium", "high"
-- risk_score must be an integer from 0 to 100
-- If category is 'Normal' and sentiment is not negative → risk_score should be 0-15
-- If category is 'Violence', 'Threat', or 'Sexual_Violence' → risk_score should be 70+
-- If category is 'Hate_Speech' or 'Communal_Violence' → risk_score should be 60+
-- Match risk_level to score: 0-39 = "low", 40-69 = "medium", 70-100 = "high"
+- 0-15: Harmless / Supportive / Attacking Opposition.
+- 16-39: Mild civic complaints.
+- 40-69: Strong attacks on our leaders, disinformation, or communal tension.
+- 70-100: Direct threats to our leaders, incitement to violence, or massive protests against us.
 
 ════════════════════════
 OUTPUT FORMAT (STRICT JSON ONLY):
 ════════════════════════
 {
   "category": "<moderation_category_ID>",
-  "reasoning": "<why this moderation category>",
-  "grievance_type": "<short 2-4 word topic label>",
-  "grievance_reasoning": "<1-line plain summary of what the person is complaining about>",
+  "target_party": "OUR_GROUP | OPPOSITION | NEUTRAL",
+  "stance": "Support | Criticism | Neutral",
+  "reasoning": "<Step-by-step logic used for sentiment analysis>",
+  "grievance_type": "<one of the allowed topics>",
+  "grievance_reasoning": "<1-line summary>",
   "sentiment": "positive | negative | neutral",
-  "risk_score": <integer 0-100>,
+  "risk_score": <integer>,
   "risk_level": "low | medium | high"
 }
 
@@ -161,6 +155,7 @@ ${text}
       }, { timeout: 120000 });
 
       const content = response.data?.message?.content;
+      console.log(`[LLM] RAW RESPONSE: ${content}`);
       result = JSON.parse(content);
     } else {
       // Use OpenAI SDK for GitHub
@@ -236,6 +231,8 @@ ${text}
 
     return {
       category: finalCategory,
+      target_party: result.target_party || 'NEUTRAL',
+      stance: result.stance || 'Neutral',
       reasoning: result.reasoning || "",
       grievance_type: finalTopic,
       grievance_reasoning: result.grievance_reasoning || "",

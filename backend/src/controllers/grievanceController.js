@@ -139,7 +139,8 @@ const buildListQuery = (params = {}, options = {}) => {
         category,
         grievance_type,
         analysis_category,
-        risk_level
+        risk_level,
+        person_id
     } = params;
 
     const { includeTab = true } = options;
@@ -164,6 +165,10 @@ const buildListQuery = (params = {}, options = {}) => {
         query['analysis.sentiment'] = sentiment.toLowerCase();
     }
     if (source_id && source_id !== 'all') query.grievance_source_id = source_id;
+
+    if (person_id && person_id !== 'all') {
+        query['linked_persons.person_id'] = person_id;
+    }
 
     if (platform && platform !== 'all') {
         query.platform = platform;
@@ -710,6 +715,7 @@ const getGrievances = async (req, res) => {
             'detected_location.city': 1,
             'detected_location.district': 1,
             'detected_location.constituency': 1,
+            linked_persons: 1,
             is_active: 1
         };
 

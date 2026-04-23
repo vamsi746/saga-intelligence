@@ -8,7 +8,7 @@ const Settings = require('../models/Settings');
 const Keyword = require('../models/Keyword');
 const { performFullAnalysis } = require('./monitorService');
 const { generateComplaintCode } = require('./complaintCodeService');
-const { analyzeGrievanceContent, extractAndSaveLocation } = require('./grievanceService');
+const { analyzeGrievanceContent } = require('./grievanceService');
 const { syncLegacyFieldsFromWorkflow } = require('./grievanceWorkflowService');
 
 const BATCH_SIZE = Number(process.env.ENGINE_TEMP_BATCH_SIZE || 40);
@@ -228,7 +228,7 @@ function normalizeGrievanceRaw(item) {
   const grievanceMode = asString(engineMeta.grievance_mode || 'handle');
 
   const idCandidate = asString(
-    raw.id || raw.tweet_id || raw.post_id || raw.videoId || raw.pk || raw.code
+    raw.id || raw.id_str || raw.tweet_id || raw.post_id || raw.videoId || raw.pk || raw.code
   );
   const canonicalId = platform === 'x'
     ? idCandidate
@@ -307,6 +307,16 @@ function normalizeGrievanceRaw(item) {
     media = [{ type: 'video', url }];
   }
 
+  const extractMentions = () => {
+    if (platform === 'x') {
+      const xMentions = raw.entities?.user_mentions || [];
+      return xMentions.map(m => m.screen_name).filter(Boolean);
+    }
+    const textToScan = text || '';
+    const found = textToScan.match(/@(\w+)/g);
+    return found ? found.map(m => m.substring(1)) : [];
+  };
+
   return {
     canonicalId,
     text: text || '(no text)',
@@ -316,7 +326,8 @@ function normalizeGrievanceRaw(item) {
     createdAt,
     media,
     taggedAccount: asString(item.source_identifier || engineMeta.grievance_keyword || item.source_display_name || 'keyword_grievance'),
-    grievanceMode
+    grievanceMode,
+    mentions: extractMentions()
   };
 }
 
@@ -390,12 +401,14 @@ async function upsertGrievanceFromTemp(item) {
 
   syncLegacyFieldsFromWorkflow(grievance, 'received');
   await grievance.save();
-  await analyzeGrievanceContent(grievance.id, n.text, item.platform);
-  await extractAndSaveLocation(grievance.id, n.text, {
+  await analyzeGrievanceContent(grievance.id, n.text, item.platform, {
     handle: n.authorHandle,
     display_name: n.authorName,
     location: '',
     bio: ''
+  }, {
+    mentions: n.mentions,
+    taggedAccount: n.taggedAccount
   });
   await updateGrievanceSourceStats(grievanceSource);
   return grievance;
@@ -594,5 +607,6 @@ function startTempContentProcessor() {
 
 module.exports = {
   startTempContentProcessor,
-  runCycle
+  runCycle,
+  upsertGrievanceFromTemp
 };

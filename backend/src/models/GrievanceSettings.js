@@ -49,6 +49,11 @@ const grievanceSettingsSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Global round-robin pointer for fallback tagging (Hyderabad vs Telangana)
+  global_location_rr_index: {
+    type: Number,
+    default: 0
+  },
   // Report template settings
   report_settings: {
     include_media: { type: Boolean, default: true },

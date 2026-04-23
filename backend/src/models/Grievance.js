@@ -305,6 +305,8 @@ const grievanceSchema = new mongoose.Schema({
   // AI Analysis (full pipeline results)
   analysis: {
     sentiment: { type: String, enum: ['positive', 'negative', 'neutral'] },
+    target_party: { type: String },
+    stance: { type: String },
     risk_level: { type: String, enum: ['low', 'medium', 'high', 'critical'] },
     risk_score: { type: Number, default: 0 },
     category: { type: String },
@@ -332,6 +334,15 @@ const grievanceSchema = new mongoose.Schema({
     confidence: { type: String },
     source: { type: String }
   },
+  // Persons (MPs, MLAs, CM) identified in the content or via tagging
+  linked_persons: [{
+    person_id: { type: String },
+    name: { type: String },
+    role: { type: String },
+    district: { type: String },
+    constituency: { type: String },
+    match_type: { type: String, enum: ['mention', 'text_match'] }
+  }],
   // Is this grievance currently visible/active
   is_active: {
     type: Boolean,

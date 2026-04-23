@@ -179,8 +179,27 @@ const analyzeContent = async (text, options = {}) => {
       if (finalSentiment === 'negative') finalSentiment = 'neutral';
     } else if (currentCategory && currentCategory !== 'Normal') {
       // For all actual grievance categories (Traffic, Violence, Hate Speech, etc.), it's fundamentally a negative event/complaint.
-      if (finalSentiment === 'positive') finalSentiment = 'negative'; // It's not a positive event if it's a hate speech or nuisance complaint.
+      // EXCEPTION: If it's positive because it's attacking the OPPOSITION, keep it positive.
+      const isOppositionTarget = String(llmResult.target_party || '').includes('OPPOSITION');
+      if (finalSentiment === 'positive' && !isOppositionTarget) {
+        finalSentiment = 'negative';
+      }
     }
+
+    // --- PASS C: LOCATION EXTRACTION (V6.5) ---
+    log("Running Pass C (Location Extraction)...");
+    const locationExtractionService = require('./locationExtractionService');
+    const detectedLocation = await locationExtractionService.extractLocation(text, options.postedBy || {});
+    log(`Location Extraction Complete: ${detectedLocation ? detectedLocation.city : 'Not found'}`);
+
+    // --- PASS B.1: PERSON DETECTION (NEW) ---
+    log("Running Pass B.1 (Person Detection)...");
+    const personDetectionService = require('./personDetectionService');
+    const linkedPersons = await personDetectionService.detectPersons(text, {
+        mentions: options.mentions || [], // Extract from options if provided
+        taggedAccount: options.taggedAccount || null
+    });
+    log(`Person Detection Complete: Found ${linkedPersons.length} persons.`);
 
     // --- RESULT CONSOLIDATION ---
     const finalResult = {
@@ -195,8 +214,12 @@ const analyzeContent = async (text, options = {}) => {
       legal_sections: mappingResult.legal_sections || [],
       triggered_keywords: mappingResult.triggered_keywords || [],
       sentiment: finalSentiment,
+      target_party: llmResult.target_party || 'NEUTRAL',
+      stance: llmResult.stance || 'Neutral',
       explanation: llmResult.reasoning || '',
       highlights: mappingResult.triggered_keywords || [],
+      detected_location: detectedLocation,
+      linked_persons: linkedPersons,
       // Structure for ReasonModal
       llm_analysis: {
         category: currentCategory,
@@ -215,22 +238,21 @@ const analyzeContent = async (text, options = {}) => {
     finalResult.reasons = [
       finalResult.explanation,
       `Risk Assessment: ${finalRiskLevel.toUpperCase()} (${finalRiskScore}%)`,
+      detectedLocation ? `Location: ${detectedLocation.city}` : null,
       ...finalResult.violated_policies.map(p => `Policy: ${p.policy_name}`),
       ...finalResult.legal_sections.map(l => `Legal: ${l.act} ${l.section}`)
     ].filter(Boolean);
 
-    // --- PASS D: STANDALONE FORENSICS (POST-SAVE TRIGGER) ---
-    // If we have content metadata (from monitorService), trigger forensics
+    // --- PASS D: STANDALONE FORENSICS (COMMENTED OUT) ---
+    /*
     let forensicResults = null;
     if (!options.skipForensics && options.content && options.analysisId) {
       forensicResults = await triggerForensicAnalysis(options.content, options.analysisId);
     }
-
     finalResult.forensic_results = forensicResults;
-
+    */
 
     return finalResult;
-
   } catch (error) {
     log(`Critical Analysis Error: ${error.message}`);
     return {
