@@ -215,7 +215,7 @@ const contentSchema = new mongoose.Schema({
 
 // NOTE: index will be migrated at runtime in backend/src/index.js (fixIndexes)
 contentSchema.index({ platform: 1, content_id: 1 }, { unique: true });
-contentSchema.index({ id: 1 }); // Critical: used by alert $lookup pipelines
+// contentSchema.index({ id: 1 }); // Removed: redundant with unique:true on id field
 contentSchema.index({ content_id: 1 }); // Standalone for $expr lookups
 contentSchema.index({ platform: 1, source_id: 1, published_at: -1 });
 contentSchema.index({ platform: 1, risk_level: 1 });

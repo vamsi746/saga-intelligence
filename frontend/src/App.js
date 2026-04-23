@@ -44,6 +44,7 @@ const DeepfakeAnalysis = lazy(() => import('./pages/Deepfake/DeepfakeAnalysis'))
 const Telegram = lazy(() => import('./pages/Telegram'));
 const AnalysisTools = lazy(() => import('./pages/AnalysisTools'));
 const DarkWebSearch = lazy(() => import('./pages/DarkWebSearch'));
+const PublicWebArticles = lazy(() => import('./pages/PublicWebArticles'));
 const EventsReport = lazy(() => import('./pages/EventsReport'));
 const TelanganaMap = lazy(() => import('./pages/TelanganaMap'));
 // Loading fallback
@@ -114,6 +115,7 @@ function App() {
                     <Route path="telegram" element={<Telegram />} />
                     <Route path="analysis-tools" element={<AnalysisTools />} />
                     <Route path="dark-web-search" element={<DarkWebSearch />} />
+                    <Route path="public-web-articles" element={<PublicWebArticles />} />
                     <Route path="deepfake/forensics" element={<DeepfakeAnalysis />} />
                     <Route path="events-report" element={<EventsReport />} />
                     <Route path="help" element={<HelpGuide />} />

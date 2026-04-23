@@ -193,16 +193,39 @@ const buildListQuery = (params = {}, options = {}) => {
     const { location_city, location_district, location_constituency } = params;
     const addLocationOrFilter = (rawValue, fields) => {
         if (!rawValue || rawValue === 'all') return;
-        const escaped = escapeRegex(rawValue);
+
+        let target = String(rawValue).trim();
+        // If target is "Hyderabad, Telangana", we only want to match "Hyderabad".
+        if (target.includes(',')) {
+            target = target.split(',')[0].trim();
+        }
+
+        const escaped = escapeRegex(target);
         const boundaryRegex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
-        const locationOr = fields.map((field) => ({ [field]: { $regex: boundaryRegex } }));
+        const orConditions = fields.map((field) => ({ [field]: { $regex: boundaryRegex } }));
+
+        const isStateLevelSearch = /^telangana$/i.test(target);
+        let condition;
+
+        if (!isStateLevelSearch) {
+            // Strict filtering: If target isn't "Telangana", exclude results where city is broadly "Telangana"
+            // but the match happened in a lower field (district/constituency).
+            condition = {
+                $and: [
+                    { $or: orConditions },
+                    { 'detected_location.city': { $nin: ['Telangana', 'telangana', 'TELANGANA'] } }
+                ]
+            };
+        } else {
+            condition = { $or: orConditions };
+        }
 
         if (query.$or) {
-            query.$and = [...(query.$and || []), { $or: query.$or }, { $or: locationOr }];
+            query.$and = [...(query.$and || []), { $or: query.$or }, condition];
             delete query.$or;
             return;
         }
-        query.$and = [...(query.$and || []), { $or: locationOr }];
+        query.$and = [...(query.$and || []), condition];
     };
 
     // City filter is used by map redirection; allow matches across detected location fields.
