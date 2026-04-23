@@ -9,8 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Tag, MapPin, ArrowLeft, Crown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { TELANGANA_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
-
-const MAHBUBNAGAR_PC = 'MAHBUBNAGAR';
+import { getMandalsForConstituency } from '../data/telanganaConstituencyMandals';
 
 // Normalize AC names for matching: strip reservation suffixes (SC/ST/MBC) and fix known
 // spelling discrepancies between our data and the GeoJSON AC_NAME field.
@@ -65,14 +64,18 @@ const canonicalizeTopic = (value) => {
 
 const getTopicStyle = (topic) => TOPIC_STYLES[canonicalizeTopic(topic)] || 'bg-teal-50 text-teal-700 ring-teal-200';
 
-const AC_NAMES = ['Kodangal', 'Narayanpet', 'Mahbubnagar', 'Jadcherla', 'Devarkadra', 'Makthal', 'Shadnagar'];
-
 const SENTIMENT_TIERS = {
   high:    { fill: '#15803d', hover: '#166534', stroke: '#14532d' },
   medium:  { fill: '#22c55e', hover: '#16a34a', stroke: '#15803d' },
   low:     { fill: '#86efac', hover: '#4ade80', stroke: '#22c55e' },
   none:    { fill: '#e2e8f0', hover: '#cbd5e1', stroke: '#94a3b8' },
 };
+
+const MANDAL_COLORS = [
+  '#bfdbfe', '#bbf7d0', '#fde68a', '#fecdd3', '#ddd6fe', '#bae6fd',
+  '#fed7aa', '#a7f3d0', '#fda4af', '#c7d2fe', '#d9f99d', '#fbcfe8',
+  '#99f6e4', '#fef08a', '#e9d5ff', '#bfdbfe', '#fdba74', '#86efac',
+];
 
 const getSentimentColors = (stats) => {
   if (!stats || stats.count === 0) return SENTIMENT_TIERS.none;
@@ -173,8 +176,6 @@ const SentimentPie = ({ positive = 0, negative = 0, neutral = 0, size = 180 }) =
   );
 };
 
-const SELECTED_AC_COLORS = { fill: '#3b82f6', hover: '#2563eb', stroke: '#1d4ed8' };
-
 const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMinisters = [] }) => {
   const navigate = useNavigate();
   const routerLocation = useLocation();
@@ -208,9 +209,12 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
   const [selectedConstituencyData, setSelectedConstituencyData] = useState(null);
   const [hoverTweets, setHoverTweets] = useState([]);
   const [hoverTweetsLoading, setHoverTweetsLoading] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const hoverHideTimerRef = useRef(null);
+  const dragRef = useRef({ active: false, pointerId: null, x: 0, y: 0 });
 
   const clearHoverHideTimer = useCallback(() => {
     if (hoverHideTimerRef.current) {
@@ -387,26 +391,52 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
       d.categories = mergeTopicEntries(d.categories);
     });
     return m;
-  }, [mapStats, embedded]);
+  }, [mapStats]);
 
-  const pcFeatures = useMemo(() => {
+  const highlightedConstituency = useMemo(() => {
+    if (highlightMinister?.constituency) return normalizeAcName(highlightMinister.constituency);
+    if (highlightMinisters?.length > 0 && highlightMinisters[0]?.constituency) {
+      return normalizeAcName(highlightMinisters[0].constituency);
+    }
+    return null;
+  }, [highlightMinister, highlightMinisters]);
+
+  const selectedConstituencyName = useMemo(() => {
+    if (embedded) return highlightedConstituency;
+    return normalizeAcName(urlParams.constituency);
+  }, [embedded, highlightedConstituency, urlParams.constituency]);
+
+  const displayGeojson = useMemo(() => {
     if (!geojson) return null;
-    const feats = geojson.features.filter(f => f.properties.PC_NAME === MAHBUBNAGAR_PC);
-    return { ...geojson, features: feats };
-  }, [geojson]);
+    if (!selectedConstituencyName) return geojson;
+    const features = geojson.features.filter(
+      (f) => normalizeAcName(f.properties.AC_NAME) === selectedConstituencyName
+    );
+    return features.length > 0 ? { ...geojson, features } : geojson;
+  }, [geojson, selectedConstituencyName]);
+
+  useEffect(() => {
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+  }, [selectedConstituencyName, embedded]);
 
   const { projection, pathGenerator, dims } = useMemo(() => {
-    if (!geojson) return { projection: null, pathGenerator: null, dims: { w: 800, h: 950 } };
+    const mapGeojson = displayGeojson || geojson;
+    if (!mapGeojson) return { projection: null, pathGenerator: null, dims: { w: 800, h: 950 } };
     const w = embedded ? 600 : 700;
     const h = embedded ? 600 : 850;
-    const proj = geoMercator().fitSize([w, h], geojson);
+    const padding = selectedConstituencyName ? 36 : 0;
+    const proj = padding > 0
+      ? geoMercator().fitExtent([[padding, padding], [w - padding, h - padding]], mapGeojson)
+      : geoMercator().fitSize([w, h], mapGeojson);
     return { projection: proj, pathGenerator: geoPath().projection(proj), dims: { w, h } };
-  }, [geojson, embedded]);
+  }, [displayGeojson, geojson, embedded, selectedConstituencyName]);
 
   const districtCentroids = useMemo(() => {
-    if (!geojson || !projection) return {};
+    const mapGeojson = displayGeojson || geojson;
+    if (!mapGeojson || !projection) return {};
     const groups = {};
-    geojson.features.forEach(f => {
+    mapGeojson.features.forEach(f => {
       const d = f.properties.DIST_NAME;
       if (!groups[d]) groups[d] = [];
       groups[d].push(f);
@@ -419,47 +449,7 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
       if (px) out[name] = px;
     });
     return out;
-  }, [geojson, projection]);
-
-  const acCentroids = useMemo(() => {
-    if (!pcFeatures || !projection) return {};
-    const out = {};
-    pcFeatures.features.forEach(f => {
-      const name = f.properties.AC_NAME;
-      const c = geoCentroid(f);
-      const px = projection(c);
-      if (px) out[name] = px;
-    });
-    return out;
-  }, [pcFeatures, projection]);
-
-  const allAcCentroids = useMemo(() => {
-    if (!geojson || !projection) return {};
-    const out = {};
-    geojson.features.forEach(f => {
-      const raw = f.properties.AC_NAME;
-      if (!raw) return;
-      const c = geoCentroid(f);
-      const px = projection(c);
-      if (!px) return;
-      if (!out[raw]) out[raw] = px;
-      // Also store under normalized key so data-side constituency names resolve correctly
-      const norm = normalizeAcName(raw);
-      if (!out[norm]) out[norm] = px;
-    });
-    return out;
-  }, [geojson, projection]);
-
-  const districtFeatures = useMemo(() => {
-    if (!geojson) return {};
-    const m = {};
-    geojson.features.forEach(f => {
-      const d = f.properties.DIST_NAME;
-      if (!m[d]) m[d] = { name: d, hasMahbubnagar: false };
-      if (f.properties.PC_NAME === MAHBUBNAGAR_PC) m[d].hasMahbubnagar = true;
-    });
-    return m;
-  }, [geojson]);
+  }, [displayGeojson, geojson, projection]);
 
   const handleMouseMove = (e, distName) => {
     clearHoverHideTimer();
@@ -487,6 +477,141 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
     }
     return Math.min(tooltipPos.x + gap, containerWidth - estimatedWidth - 6);
   }, [tooltipPos.x]);
+
+  const updateZoom = useCallback((delta) => {
+    setMapZoom((current) => Math.min(2.8, Math.max(0.75, Number((current + delta).toFixed(2)))));
+  }, []);
+
+  const beginMapDrag = useCallback((e) => {
+    if (!embedded) return;
+    dragRef.current = { active: true, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }, [embedded]);
+
+  const moveMapDrag = useCallback((e) => {
+    const drag = dragRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dx = (e.clientX - drag.x) * (dims.w / rect.width);
+    const dy = (e.clientY - drag.y) * (dims.h / rect.height);
+    dragRef.current = { ...drag, x: e.clientX, y: e.clientY };
+    setMapPan((current) => ({ x: current.x + dx, y: current.y + dy }));
+  }, [dims.h, dims.w]);
+
+  const endMapDrag = useCallback((e) => {
+    if (dragRef.current.pointerId === e.pointerId) {
+      dragRef.current = { active: false, pointerId: null, x: 0, y: 0 };
+    }
+  }, []);
+
+  const renderMandalSegments = useCallback((feature, keyPrefix) => {
+    if (!feature || !pathGenerator) return null;
+    const bounds = pathGenerator.bounds(feature);
+    if (!bounds) return null;
+    const [[x0, y0], [x1, y1]] = bounds;
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (width <= 0 || height <= 0) return null;
+
+    const clipId = `mandal-clip-${keyPrefix}`;
+
+    // Look up actual mandal names for this constituency
+    const acName = feature.properties?.AC_NAME || '';
+    const mandals = getMandalsForConstituency(acName);
+    const N = mandals.length > 0 ? mandals.length : 6;
+    const cols = Math.ceil(Math.sqrt(N));
+    const rows = Math.ceil(N / cols);
+    const cellW = width / cols;
+    const cellH = height / rows;
+
+    // Determine font size based on cell dimensions
+    const minDim = Math.min(cellW, cellH);
+    const fontSize = minDim > 60 ? '9px' : minDim > 35 ? '7.5px' : '6px';
+
+    const cells = Array.from({ length: N }, (_, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cx = x0 + col * cellW;
+      const cy = y0 + row * cellH;
+      const mandalName = mandals[i] || `Zone ${i + 1}`;
+      const color = MANDAL_COLORS[i % MANDAL_COLORS.length];
+      // Split long names at space for wrapping
+      const nameParts = mandalName.split(' ');
+      const line1 = nameParts.slice(0, Math.ceil(nameParts.length / 2)).join(' ');
+      const line2 = nameParts.length > 1 ? nameParts.slice(Math.ceil(nameParts.length / 2)).join(' ') : null;
+      const textY = cy + cellH / 2 + (line2 ? -4 : 0);
+
+      return (
+        <g key={`cell-${i}`}>
+          <rect x={cx} y={cy} width={cellW + 0.5} height={cellH + 0.5} fill={color} opacity={0.88} />
+          {/* cell borders */}
+          <line x1={cx} x2={cx + cellW} y1={cy} y2={cy} stroke="#475569" strokeWidth={0.8} style={{ vectorEffect: 'non-scaling-stroke' }} opacity={0.7} />
+          <line x1={cx} x2={cx} y1={cy} y2={cy + cellH} stroke="#475569" strokeWidth={0.8} style={{ vectorEffect: 'non-scaling-stroke' }} opacity={0.7} />
+          {/* mandal name label */}
+          <text
+            x={cx + cellW / 2}
+            y={textY}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{
+              fontSize,
+              fontWeight: 700,
+              fill: '#1e293b',
+              stroke: 'rgba(255,255,255,0.85)',
+              strokeWidth: 2.5,
+              paintOrder: 'stroke',
+              pointerEvents: 'none',
+              userSelect: 'none',
+            }}
+          >
+            {line1}
+          </text>
+          {line2 && (
+            <text
+              x={cx + cellW / 2}
+              y={textY + 10}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{
+                fontSize,
+                fontWeight: 700,
+                fill: '#1e293b',
+                stroke: 'rgba(255,255,255,0.85)',
+                strokeWidth: 2.5,
+                paintOrder: 'stroke',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            >
+              {line2}
+            </text>
+          )}
+        </g>
+      );
+    });
+
+    return (
+      <g key={`mandals-${keyPrefix}`}>
+        <defs>
+          <clipPath id={clipId}>
+            <path d={pathGenerator(feature)} />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          {cells}
+        </g>
+        {/* Constituency outline on top */}
+        <path
+          d={pathGenerator(feature)}
+          fill="none"
+          stroke="#0f172a"
+          strokeWidth={2}
+          style={{ vectorEffect: 'non-scaling-stroke' }}
+        />
+      </g>
+    );
+  }, [pathGenerator]);
 
   const totalSentiment = useMemo(() => {
     // Use state-level distribution from sentiment analytics API
@@ -536,20 +661,12 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
     return distKey ? byDistrict[distKey] : null;
   }, [urlParams.constituency, selectedConstituencyData, byDistrict]);
 
-  const highlightedConstituency = useMemo(() => {
-    if (highlightMinister?.constituency) return normalizeAcName(highlightMinister.constituency);
-    if (highlightMinisters?.length > 0 && highlightMinisters[0]?.constituency) {
-      return normalizeAcName(highlightMinisters[0].constituency);
-    }
-    return null;
-  }, [highlightMinister, highlightMinisters]);
-
   if (!geojson) return <div className={cn('flex items-center justify-center', embedded ? 'h-full' : 'h-screen')}><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>;
 
-  /* ── Embedded: fixed-scale map with single constituency boundary highlight ── */
+  /* ── Embedded: full map by default, selected constituency only when chosen ── */
   if (embedded) {
-    const hasSelection = Boolean(highlightedConstituency);
-    const highlightColor = highlightMinister?.color || highlightMinisters?.[0]?.color || SELECTED_AC_COLORS.stroke;
+    const hasSelection = Boolean(selectedConstituencyName);
+    const embeddedFeatures = displayGeojson?.features || geojson.features;
 
     return (
       <div className="relative w-full h-full bg-slate-50 overflow-hidden" ref={containerRef}>
@@ -559,21 +676,87 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
           </div>
         )}
 
-        <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
-          {geojson.features.map((f, i) => {
-            const isHL = hasSelection && normalizeAcName(f.properties.AC_NAME) === highlightedConstituency;
-            return (
-              <path
-                key={i}
-                d={pathGenerator(f.geometry)}
-                fill="#f1f5f9"
-                stroke={isHL ? highlightColor : '#94a3b8'}
-                strokeWidth={isHL ? 2.2 : 0.7}
-                style={{ vectorEffect: 'non-scaling-stroke' }}
-                className="transition-colors duration-150"
-              />
-            );
-          })}
+        <div className="absolute top-2 left-2 z-10 flex overflow-hidden rounded-md border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => updateZoom(-0.15)}
+            className="h-7 w-7 text-base font-semibold leading-none text-slate-700 hover:bg-slate-100 disabled:text-slate-300"
+            disabled={mapZoom <= 0.75}
+            aria-label="Zoom out"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={() => updateZoom(0.15)}
+            className="h-7 w-7 border-l border-slate-200 text-base font-semibold leading-none text-slate-700 hover:bg-slate-100 disabled:text-slate-300"
+            disabled={mapZoom >= 2.8}
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+        </div>
+
+        {hasSelection && (
+          <div className="absolute bottom-2 left-2 z-10 rounded-md border border-slate-200 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm backdrop-blur-sm">
+            Drag map after zoom
+          </div>
+        )}
+
+        {/* Mandal legend for embedded constituency view */}
+        {hasSelection && (() => {
+          const constituencyName = embeddedFeatures[0]?.properties?.AC_NAME || '';
+          const mandals = getMandalsForConstituency(constituencyName);
+          if (mandals.length === 0) return null;
+          return (
+            <div className="absolute top-2 right-2 z-10 bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm max-w-[140px]">
+              <div className="text-[9px] font-bold text-slate-600 mb-1 uppercase tracking-wide">Mandals</div>
+              <div className="space-y-0.5 max-h-[180px] overflow-y-auto">
+                {mandals.map((m, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span
+                      className="inline-block w-2 h-2 rounded-[2px] flex-shrink-0"
+                      style={{ background: MANDAL_COLORS[i % MANDAL_COLORS.length] }}
+                    />
+                    <span className="text-[9px] text-slate-700 leading-tight truncate">{m}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${dims.w} ${dims.h}`}
+          className={cn('w-full h-full touch-none select-none', mapZoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default')}
+          onPointerDown={beginMapDrag}
+          onPointerMove={moveMapDrag}
+          onPointerUp={endMapDrag}
+          onPointerCancel={endMapDrag}
+          onWheel={(e) => {
+            if (!hasSelection) return;
+            e.preventDefault();
+            updateZoom(e.deltaY > 0 ? -0.12 : 0.12);
+          }}
+        >
+          <g transform={`translate(${mapPan.x} ${mapPan.y}) translate(${dims.w / 2} ${dims.h / 2}) scale(${mapZoom}) translate(${-dims.w / 2} ${-dims.h / 2})`}>
+            {embeddedFeatures.map((f, i) => (
+              hasSelection ? (
+                renderMandalSegments(f, `embedded-${i}`)
+              ) : (
+                <path
+                  key={i}
+                  d={pathGenerator(f.geometry)}
+                  fill="#f1f5f9"
+                  stroke="#94a3b8"
+                  strokeWidth={0.7}
+                  style={{ vectorEffect: 'non-scaling-stroke' }}
+                  className="transition-colors duration-150"
+                />
+              )
+            ))}
+          </g>
         </svg>
       </div>
     );
@@ -600,7 +783,6 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
     : topCategories;
 
   const hovStats = hoveredDistrict ? (byDistrict[hoveredDistrict] || byAC[hoveredDistrict] || { count: 0, positive: 0, negative: 0, neutral: 0, categories: [] }) : null;
-  const isHovAc = hoveredDistrict && AC_NAMES.includes(hoveredDistrict);
   const topCats = hovStats?.categories || [];
   const hovTotal = hovStats?.count || ((hovStats?.negative || 0) + (hovStats?.positive || 0) + (hovStats?.neutral || 0));
 
@@ -648,7 +830,7 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
             <div className="text-2xl font-bold text-blue-700 mt-0.5">{totalGrievances.toLocaleString()}</div>
           </Card>
           <Card className="p-3 border-0 shadow-md bg-gradient-to-br from-green-50 to-green-100">
-            <div className="text-[10px] font-semibold text-green-500 uppercase tracking-wide">Positive Sentiment</div>
+            <div className="text-[10px] font-semibold text-green-500 uppercase tracking-wide">Pos. Sentiment</div>
             <div className="text-2xl font-bold text-green-700 mt-0.5">
               {totalGrievances > 0 ? Math.round((totalSentiment.positive / totalGrievances) * 100) : 0}%
             </div>
@@ -760,21 +942,21 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
                 size={180}
               />
             </div>
-            <div className="flex justify-center gap-4 mt-3">
-              <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex justify-center gap-2.5 mt-3">
+              <div className="flex items-center gap-1 text-xs">
                 <TrendingUp className="h-3.5 w-3.5 text-green-500" />
                 <span className="text-green-700 font-semibold">{displaySentiment.positive || 0}</span>
-                <span className="text-slate-400">Positive</span>
+                <span className="text-slate-400">Pos</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <TrendingDown className="h-3.5 w-3.5 text-red-500" />
                 <span className="text-red-700 font-semibold">{displaySentiment.negative || 0}</span>
-                <span className="text-slate-400">Negative</span>
+                <span className="text-slate-400">Neg</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <Minus className="h-3.5 w-3.5 text-slate-400" />
                 <span className="text-slate-600 font-semibold">{displaySentiment.neutral || 0}</span>
-                <span className="text-slate-400">Neutral</span>
+                <span className="text-slate-400">Mod</span>
               </div>
             </div>
           </Card>
@@ -791,15 +973,15 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
                 </div>
                 <div className="bg-green-50 rounded-lg p-2 text-center">
                   <div className="text-lg font-bold text-green-700">{displaySentiment.positive || 0}</div>
-                  <div className="text-[9px] text-green-500 font-medium">Positive</div>
+                  <div className="text-[9px] text-green-500 font-medium">Pos</div>
                 </div>
                 <div className="bg-amber-50 rounded-lg p-2 text-center">
                   <div className="text-lg font-bold text-amber-700">{displaySentiment.neutral || 0}</div>
-                  <div className="text-[9px] text-amber-500 font-medium">Moderate</div>
+                  <div className="text-[9px] text-amber-500 font-medium">Mod</div>
                 </div>
                 <div className="bg-red-50 rounded-lg p-2 text-center">
                   <div className="text-lg font-bold text-red-700">{displaySentiment.negative || 0}</div>
-                  <div className="text-[9px] text-red-500 font-medium">Negative</div>
+                  <div className="text-[9px] text-red-500 font-medium">Neg</div>
                 </div>
               </div>
             </Card>
@@ -835,20 +1017,35 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
               style={{ maxHeight: '82vh' }}
             >
               {/* Constituency polygons — all districts colored by sentiment */}
-              {geojson.features.map((f, i) => {
+              {(displayGeojson?.features || geojson.features).map((f, i) => {
                 const { DIST_NAME, AC_NAME } = f.properties;
                 const isSelectedAC = urlParams.constituency &&
                   AC_NAME?.toLowerCase() === urlParams.constituency.toLowerCase();
                 const hoverKey = isSelectedAC ? AC_NAME : DIST_NAME;
                 const isHov = hoveredDistrict === hoverKey;
-                const distStats = byDistrict[DIST_NAME];
+                const distStats = isSelectedAC ? (byAC[AC_NAME] || byDistrict[DIST_NAME]) : byDistrict[DIST_NAME];
 
-                const colors = isSelectedAC ? SELECTED_AC_COLORS : getSentimentColors(distStats);
+                const colors = getSentimentColors(distStats);
+                if (isSelectedAC) {
+                  return (
+                    <g
+                      key={i}
+                      className="cursor-pointer"
+                      onMouseEnter={(e) => handleMouseMove(e, hoverKey)}
+                      onMouseMove={(e) => handleMouseMove(e, hoverKey)}
+                      onMouseLeave={scheduleHoverHide}
+                      onClick={() => handleDistrictClick(hoverKey)}
+                    >
+                      {renderMandalSegments(f, `standalone-${i}`)}
+                    </g>
+                  );
+                }
+
                 return (
                   <path key={i} d={pathGenerator(f.geometry)}
                     fill={isHov ? colors.hover : colors.fill}
-                    stroke={isHov ? '#0f172a' : isSelectedAC ? SELECTED_AC_COLORS.stroke : colors.stroke}
-                    strokeWidth={isHov ? 2.5 : isSelectedAC ? 2 : 0.8}
+                    stroke={isHov ? '#0f172a' : colors.stroke}
+                    strokeWidth={isHov ? 2.5 : 0.8}
                     opacity={hoveredDistrict && !isHov ? 0.65 : 1}
                     className="cursor-pointer transition-all duration-150"
                     onMouseEnter={(e) => handleMouseMove(e, hoverKey)}
@@ -885,8 +1082,8 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
                     <div className="text-[10px] text-slate-500 mt-0.5 truncate">{urlParams.ministerName}</div>
                   )}
                   <div className="flex items-center gap-1 mt-0.5">
-                    <span className="inline-block w-2 h-2 rounded-sm bg-blue-500" />
-                    <span className="text-[10px] text-slate-500">Highlighted in blue · Hover to inspect</span>
+                    <span className="inline-block w-2 h-2 rounded-sm bg-slate-400" />
+                    <span className="text-[10px] text-slate-500">Displayed only · Hover to inspect</span>
                   </div>
                 </>
               ) : (
@@ -900,23 +1097,24 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
               )}
             </div>
 
-            {/* Selected AC label pin (for non-Mahabubnagar constituencies) */}
+            {/* Mandal legend — shown when a constituency is selected */}
             {isMinisterView && urlParams.constituency && (() => {
-              const px = allAcCentroids[urlParams.constituency];
-              if (!px) return null;
+              const mandals = getMandalsForConstituency(urlParams.constituency);
+              if (mandals.length === 0) return null;
               return (
-                <div
-                  className="absolute pointer-events-none z-20"
-                  style={{ left: `${(px[0] / dims.w) * 100}%`, top: `${(px[1] / dims.h) * 100}%`, transform: 'translate(-50%, -100%)' }}
-                >
-                  <div
-                    className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold text-white shadow-lg border border-white/30"
-                    style={{ background: selectedMinisterData?.color || SELECTED_AC_COLORS.fill }}
-                  >
-                    <MapPin className="h-2.5 w-2.5" />
-                    {urlParams.constituency}
+                <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg px-3 py-2 shadow-md max-w-[200px]">
+                  <div className="text-[10px] font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Mandals</div>
+                  <div className="space-y-0.5 max-h-[240px] overflow-y-auto">
+                    {mandals.map((m, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-slate-300"
+                          style={{ background: MANDAL_COLORS[i % MANDAL_COLORS.length] }}
+                        />
+                        <span className="text-[10px] text-slate-700 leading-tight">{m}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="w-0 h-0 mx-auto" style={{ borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `6px solid ${selectedMinisterData?.color || SELECTED_AC_COLORS.fill}` }} />
                 </div>
               );
             })()}
@@ -1008,12 +1206,6 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
           
           {/* Bottom legend */}
           <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500 justify-center">
-            {isMinisterView && urlParams.constituency && (
-              <span className="flex items-center gap-1.5">
-                <span className="w-4 h-4 rounded" style={{ background: SELECTED_AC_COLORS.fill }} />
-                <span className="font-semibold text-blue-600">{urlParams.constituency} (Selected)</span>
-              </span>
-            )}
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded border border-gray-300" style={{ background: SENTIMENT_TIERS.none.fill }} /> No Data</span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded" style={{ background: SENTIMENT_TIERS.low.fill }} /> Low Positive</span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded" style={{ background: SENTIMENT_TIERS.medium.fill }} /> Medium Positive</span>

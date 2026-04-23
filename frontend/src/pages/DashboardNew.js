@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 // ...existing imports...
 import ReactPlayer from 'react-player';
 import { Link, useNavigate } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } 
 import {
   Shield, AlertTriangle, Send,
   Users, ChevronDown, Loader2, Info, Clock, FileText, MessageSquare,
-  ArrowRight, RefreshCw, Sparkles, X, Video, Pencil, Play, ExternalLink, Settings,
+  ArrowRight, RefreshCw, X, Video, Pencil, Play, ExternalLink, Settings,
   BarChart3, Tag, MapPin, Star, TrendingUp, TrendingDown, Minus, Crown
 } from 'lucide-react';
 import { Card } from '../components/ui/card';
@@ -15,12 +15,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../com
 import { useDashboard } from '../contexts/DashboardContext';
 import { TELANGANA_MINISTERS, TOP_10_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
 import api from '../lib/api';
-
-// Lazy load heavy components
-const GlanceChat = lazy(() => import('../components/dashboard/GlanceChat'));
-const ManagedRibbonWidget = lazy(() => import('../components/dashboard/ManagedRibbonWidget'));
-const TodaysEventsWidget = lazy(() => import('../components/dashboard/TodaysEventsWidget'));
-const Dial100FeedWidget = lazy(() => import('../components/dashboard/Dial100FeedWidget'));
 
 import TelanganaMap from './TelanganaMap';
 
@@ -33,12 +27,6 @@ const PLATFORMS = [
   { id: 'instagram', label: 'Instagram' },
   { id: 'whatsapp', label: 'WhatsApp' }
 ];
-
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center p-4">
-    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-  </div>
-);
 
 // ─── Drone View Live Monitoring Strip ───────────────────────────────────────
 const DRONE_API_KEY_STORAGE = 'blura_yt_api_key';
@@ -443,7 +431,7 @@ const MinistersPanel = ({ selectedId, onSelect }) => {
           </div>
           <div>
             <h3 className="text-[13px] font-semibold text-foreground">Telangana Congress MLAs</h3>
-            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to highlight constituency</p>
+            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to view constituency</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -593,9 +581,9 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
       </div>
       <div className="space-y-1 flex-1">
         {[
-          { label: 'Positive', value: positive, color: '#10b981' },
-          { label: 'Neutral', value: neutral, color: '#f59e0b' },
-          { label: 'Negative', value: negative, color: '#ef4444' },
+          { label: 'Pos', value: positive, color: '#10b981' },
+          { label: 'Mod', value: neutral, color: '#f59e0b' },
+          { label: 'Neg', value: negative, color: '#ef4444' },
         ].map(row => (
           <div key={row.label} className="flex items-center justify-between text-[10px]">
             <div className="flex items-center gap-1">
@@ -660,9 +648,9 @@ const MinisterDetailPanel = ({ minister, data }) => {
         <div className="grid grid-cols-2 gap-1.5">
           {[
             { label: 'Total', value: total, bg: 'bg-blue-50', text: 'text-blue-700' },
-            { label: 'Positive', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
-            { label: 'Moderate', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
-            { label: 'Negative', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
+            { label: 'Pos', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
+            { label: 'Mod', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
+            { label: 'Neg', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-lg p-2 text-center`}>
               <div className={`text-base font-bold ${s.text}`}>{s.value}</div>
@@ -693,7 +681,6 @@ const MinisterDetailPanel = ({ minister, data }) => {
 const Dashboard = () => {
   const { dashboardData, loading, fetchDashboardData, refreshDashboard, hasCachedData } = useDashboard();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isGlanceOpen, setIsGlanceOpen] = useState(false);
   const [selectedMinister, setSelectedMinister] = useState(null);
   const [ministerData, setMinisterData] = useState(null);
   const [ministerDataLoading, setMinisterDataLoading] = useState(false);
@@ -817,9 +804,9 @@ const Dashboard = () => {
         ].filter(d => d.value > 0);
 
         const sentimentRows = [
-          { key: 'positive', label: 'Positive', value: dist.positive || 0, color: '#10b981', barBg: 'bg-emerald-500', trackBg: 'bg-emerald-100', sentiment: 'positive' },
-          { key: 'medium', label: 'Moderate', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
-          { key: 'negative', label: 'Negative', value: dist.negative || 0, color: '#ef4444', barBg: 'bg-red-500', trackBg: 'bg-red-100', sentiment: 'negative' }
+          { key: 'positive', label: 'Pos', value: dist.positive || 0, color: '#10b981', barBg: 'bg-emerald-500', trackBg: 'bg-emerald-100', sentiment: 'positive' },
+          { key: 'medium', label: 'Mod', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
+          { key: 'negative', label: 'Neg', value: dist.negative || 0, color: '#ef4444', barBg: 'bg-red-500', trackBg: 'bg-red-100', sentiment: 'negative' }
         ];
 
         return (
@@ -858,7 +845,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 {/* Breakdown */}
-                <div className="w-full sm:flex-1 space-y-3 sm:space-y-4">
+                <div className="w-full sm:w-[220px] space-y-2.5">
                   {sentimentRows.map(row => {
                     const pct = total ? Math.round(row.value / total * 100) : 0;
                     return (
@@ -922,7 +909,7 @@ const Dashboard = () => {
                     </div>
                     <h3 className="text-[13px] font-semibold text-foreground">Telangana Constituencies</h3>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-medium">Select a minister to highlight constituency</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">Select a minister to view constituency</span>
                 </div>
                 <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
                   <div className="w-full h-[480px]">
@@ -1128,76 +1115,6 @@ const Dashboard = () => {
           </div>
         </div>
       </TooltipProvider>
-
-      {/* Events & Dial-100 Rectangle Strip */}
-      <Suspense fallback={<LoadingSpinner />}>
-        <div className="flex gap-3 items-stretch mt-2" style={{ height: '180px' }}>
-          {/* Events - Periscope */}
-          <div className="flex-1 min-w-0 h-[180px] overflow-hidden">
-             <TodaysEventsWidget className="!h-full w-full" />
-          </div>
-
-          {/* Dial-100 */}
-          <div className="flex-1 min-w-0 h-[180px] overflow-hidden">
-            <Dial100FeedWidget className="!h-full w-full" />
-          </div>
-
-          {/* Glance AI - compact strip button */}
-          <button
-             onClick={() => setIsGlanceOpen(true)}
-             className="w-[120px] shrink-0 h-[180px] bg-gradient-to-br from-indigo-50 via-white to-violet-50 rounded-xl border border-indigo-100 shadow-sm hover:shadow-indigo-200/50 hover:scale-[1.02] hover:border-indigo-300 transition-all group flex flex-col items-center justify-center p-3 text-center relative overflow-hidden"
-          >
-             <div className="absolute -top-4 -right-4 w-10 h-10 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
-             <div className="mb-1.5 p-1.5 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg shadow-md shadow-indigo-200 group-hover:rotate-12 transition-transform">
-                <Sparkles className="h-4 w-4 text-white" />
-             </div>
-             <p className="text-[7px] font-bold text-indigo-600 uppercase tracking-widest leading-none">AI Insight</p>
-             <h3 className="text-[10px] font-black text-slate-900 leading-tight uppercase tracking-tight mt-0.5">Glance</h3>
-             <div className="mt-1 flex items-center gap-0.5 text-[8px] text-slate-500 font-medium group-hover:text-indigo-600 transition-colors">
-                <span>Open</span>
-                <ArrowRight className="h-2 w-2 group-hover:translate-x-0.5 transition-transform" />
-             </div>
-          </button>
-        </div>
-      </Suspense>
-
-      {/* Glance Intelligence Centered Modal */}
-      {
-        isGlanceOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div
-              className="w-full max-w-4xl h-[560px] bg-card border border-border/50 rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 relative"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 bg-white/20 rounded-xl backdrop-blur-md">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base leading-tight">Glance Intelligence</h3>
-                    <p className="text-[10px] text-white/70 uppercase tracking-widest font-medium">Real-time Analysis Hub</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsGlanceOpen(false)}
-                  className="hover:bg-white/20 p-2 rounded-full transition-all hover:rotate-90"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <Suspense fallback={<LoadingSpinner />}>
-                  <GlanceChat />
-                </Suspense>
-              </div>
-            </div>
-            {/* Click outside to close */}
-            <div className="absolute inset-0 -z-10" onClick={() => setIsGlanceOpen(false)}></div>
-          </div>
-        )
-      }
-
 
     </div >
   );
