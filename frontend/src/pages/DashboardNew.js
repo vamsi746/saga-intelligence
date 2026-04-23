@@ -426,14 +426,12 @@ const DroneViewStrip = () => {
 
 // ─── Ministers Panel ────────────────────────────────────────────────────────
 const MinistersPanel = ({ selectedId, onSelect }) => {
-  const navigate = useNavigate();
   const scrollRef = useRef(null);
   const top10Ids = new Set(TOP_10_MINISTERS.map((m) => m.id));
 
   const scroll = (dir) => {
     if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 260, behavior: 'smooth' });
   };
-
 
   return (
     <Card className="border border-border/50 shadow-sm overflow-hidden">
@@ -444,8 +442,8 @@ const MinistersPanel = ({ selectedId, onSelect }) => {
             <Crown className="h-3.5 w-3.5 text-emerald-600" />
           </div>
           <div>
-            <h3 className="text-[13px] font-semibold text-foreground">Telangana Cabinet Ministers</h3>
-            <p className="text-[10px] text-muted-foreground">Congress Party · {TELANGANA_MINISTERS.length} Ministers · Click to view constituency</p>
+            <h3 className="text-[13px] font-semibold text-foreground">Telangana Congress MLAs</h3>
+            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to highlight constituency</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -799,7 +797,10 @@ const Dashboard = () => {
       </div>
 
       {/* Ministers Panel */}
-      <MinistersPanel selectedId={selectedMinister?.id} onSelect={setSelectedMinister} />
+      <MinistersPanel
+        selectedId={selectedMinister?.id}
+        onSelect={setSelectedMinister}
+      />
 
       {/* Grievance Sentiment Analytics */}
       {sentimentAnalytics && (() => {

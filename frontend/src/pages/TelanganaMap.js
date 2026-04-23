@@ -12,6 +12,21 @@ import { TELANGANA_MINISTERS, getMinisterInitials } from '../data/telanganaMinis
 
 const MAHBUBNAGAR_PC = 'MAHBUBNAGAR';
 
+// Normalize AC names for matching: strip reservation suffixes (SC/ST/MBC) and fix known
+// spelling discrepancies between our data and the GeoJSON AC_NAME field.
+const AC_SPELLING_ALIASES = {
+  bellampalli: 'bellampalle',
+  vikarabad:   'vicarabad',
+};
+const normalizeAcName = (n) => {
+  if (!n) return '';
+  const stripped = n
+    .replace(/\s*\(\s*(SC|ST|MBC|OBC|GEN|SP)\s*\)\s*$/i, '')
+    .trim()
+    .toLowerCase();
+  return AC_SPELLING_ALIASES[stripped] || stripped;
+};
+
 const TOPIC_STYLES = {
   'Political Criticism': 'bg-purple-50 text-purple-700 ring-purple-200',
   'Hate Speech': 'bg-red-50 text-red-700 ring-red-200',
@@ -160,7 +175,7 @@ const SentimentPie = ({ positive = 0, negative = 0, neutral = 0, size = 180 }) =
 
 const SELECTED_AC_COLORS = { fill: '#3b82f6', hover: '#2563eb', stroke: '#1d4ed8' };
 
-const TelanganaMap = ({ embedded = false, highlightMinister = null }) => {
+const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMinisters = [] }) => {
   const navigate = useNavigate();
   const routerLocation = useLocation();
 
@@ -422,12 +437,15 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null }) => {
     if (!geojson || !projection) return {};
     const out = {};
     geojson.features.forEach(f => {
-      const name = f.properties.AC_NAME;
-      if (name && !out[name]) {
-        const c = geoCentroid(f);
-        const px = projection(c);
-        if (px) out[name] = px;
-      }
+      const raw = f.properties.AC_NAME;
+      if (!raw) return;
+      const c = geoCentroid(f);
+      const px = projection(c);
+      if (!px) return;
+      if (!out[raw]) out[raw] = px;
+      // Also store under normalized key so data-side constituency names resolve correctly
+      const norm = normalizeAcName(raw);
+      if (!out[norm]) out[norm] = px;
     });
     return out;
   }, [geojson, projection]);
@@ -518,50 +536,45 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null }) => {
     return distKey ? byDistrict[distKey] : null;
   }, [urlParams.constituency, selectedConstituencyData, byDistrict]);
 
+  const highlightedConstituency = useMemo(() => {
+    if (highlightMinister?.constituency) return normalizeAcName(highlightMinister.constituency);
+    if (highlightMinisters?.length > 0 && highlightMinisters[0]?.constituency) {
+      return normalizeAcName(highlightMinisters[0].constituency);
+    }
+    return null;
+  }, [highlightMinister, highlightMinisters]);
+
   if (!geojson) return <div className={cn('flex items-center justify-center', embedded ? 'h-full' : 'h-screen')}><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>;
 
-  /* ── Embedded: full-state map, neutral by default, highlights selected minister's AC ── */
+  /* ── Embedded: fixed-scale map with single constituency boundary highlight ── */
   if (embedded) {
-    const hlConstituency = highlightMinister?.constituency || null;
-    const hlColor = highlightMinister?.color || null;
-    const hlCentroid = hlConstituency ? allAcCentroids[hlConstituency] : null;
+    const hasSelection = Boolean(highlightedConstituency);
+    const highlightColor = highlightMinister?.color || highlightMinisters?.[0]?.color || SELECTED_AC_COLORS.stroke;
 
     return (
-      <div className="relative w-full h-full bg-white" ref={containerRef}>
-        {loading && <div className="absolute top-2 right-2 z-10"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>}
-        <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
-          {geojson.features.map((f, i) => {
-            const acName = f.properties.AC_NAME;
-            const isHL = hlConstituency && acName?.toLowerCase() === hlConstituency.toLowerCase();
-            return (
-              <path key={i} d={pathGenerator(f.geometry)}
-                fill={isHL ? hlColor : '#f1f5f9'}
-                stroke={isHL ? hlColor : '#94a3b8'}
-                strokeWidth={isHL ? 2 : 0.7}
-                className="transition-all duration-200" />
-            );
-          })}
-          {/* Label on highlighted constituency */}
-          {hlCentroid && (
-            <g className="pointer-events-none select-none">
-              <text x={hlCentroid[0]} y={hlCentroid[1] - 2} textAnchor="middle"
-                style={{ fontSize: '10px', fontWeight: 800, fill: '#fff', stroke: hlColor, strokeWidth: 3, paintOrder: 'stroke' }}>
-                {hlConstituency}
-              </text>
-            </g>
-          )}
-        </svg>
-        {/* Legend strip */}
-        {hlConstituency ? (
-          <div className="absolute bottom-2 left-2 rounded-lg px-2 py-1 text-[9px] text-white shadow"
-            style={{ background: hlColor }}>
-            <MapPin className="h-2.5 w-2.5 inline mr-1" />{hlConstituency}
-          </div>
-        ) : (
-          <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-lg px-2 py-1 text-[9px] text-slate-500 shadow-sm">
-            Telangana · {geojson.features.length} Constituencies
+      <div className="relative w-full h-full bg-slate-50 overflow-hidden" ref={containerRef}>
+        {loading && (
+          <div className="absolute top-2 right-2 z-10">
+            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
           </div>
         )}
+
+        <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full h-full">
+          {geojson.features.map((f, i) => {
+            const isHL = hasSelection && normalizeAcName(f.properties.AC_NAME) === highlightedConstituency;
+            return (
+              <path
+                key={i}
+                d={pathGenerator(f.geometry)}
+                fill="#f1f5f9"
+                stroke={isHL ? highlightColor : '#94a3b8'}
+                strokeWidth={isHL ? 2.2 : 0.7}
+                style={{ vectorEffect: 'non-scaling-stroke' }}
+                className="transition-colors duration-150"
+              />
+            );
+          })}
+        </svg>
       </div>
     );
   }
