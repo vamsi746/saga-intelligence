@@ -27,11 +27,14 @@ const getDefaultBackendUrl = () => {
     return 'http://localhost:5000';
   }
 
-  // If accessing via other IP or dev port, use relative or local backend
-  if (isIP || port === '3000') {
-    return hostname === 'localhost' || hostname === '127.0.0.1'
-      ? `http://localhost:5000`
-      : `http://103.211.37.124:8000`;
+  // In local dev (React dev server), always use local backend.
+  if (port === '3000') {
+    return 'http://localhost:5000';
+  }
+
+  // Accessing directly by other IP (non-dev) keeps current hosted backend behavior.
+  if (isIP) {
+    return `http://103.211.37.124:8000`;
   }
 
   // Production (Vercel/HTTPS or Nginx Reverse Proxy) - use relative URL

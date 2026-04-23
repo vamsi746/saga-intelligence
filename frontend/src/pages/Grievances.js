@@ -617,7 +617,11 @@ const Grievances = () => {
             if (sentimentFilter) params.sentiment = sentimentFilter;
             if (topicFilter) params.grievance_type = mapTopicFilterToApi(topicFilter);
             if (analysisCategoryFilter) params.analysis_category = analysisCategoryFilter;
-            if (locationFilter) params.location_city = locationFilter;
+            if (locationFilter) {
+                // Keep both keys for compatibility with existing and legacy backend handlers.
+                params.location_city = locationFilter;
+                params.location = locationFilter;
+            }
             if (debouncedSearch) params.search = debouncedSearch;
             if (dateRange.from) params.from = dateRange.from.toISOString();
             if (dateRange.to) params.to = dateRange.to.toISOString();
@@ -1193,8 +1197,59 @@ const Grievances = () => {
     const hasActiveFilters = platformFilter !== 'all' || dateRange.from || debouncedSearch || navbarPlatform !== 'all' || navbarStatus !== 'total' || selectedHandle || locationFilter;
     const isReportsTab = navbarStatus === 'reports';
 
-    // No more client-side location filtering — backend handles it via location_city param
-    const displayedGrievances = grievances;
+    const displayedGrievances = useMemo(() => {
+        if (!locationFilter) return grievances;
+
+        let target = String(locationFilter).trim().toLowerCase();
+        if (!target) return grievances;
+
+        // If target is "Hyderabad, Telangana", we only want to match "Hyderabad".
+        // Matching both "Hyderabad" AND "Telangana" via OR is too broad.
+        if (target.includes(',')) {
+            target = target.split(',')[0].trim();
+        }
+
+        return grievances.filter((grievance) => {
+            const city = String(grievance?.detected_location?.city || '').toLowerCase().trim();
+            const district = String(grievance?.detected_location?.district || '').toLowerCase().trim();
+            const constituency = String(grievance?.detected_location?.constituency || '').toLowerCase().trim();
+
+            if (!city && !district && !constituency) return false;
+
+            // Strict match first
+            if (city === target || district === target || constituency === target) {
+                // If we matched via district/constituency, but city is broadly "telangana"
+                // and the target is a specific city, exclude it.
+                if (city === 'telangana' && target !== 'telangana') return false;
+                return true;
+            }
+
+            // Flexible matching for cases like "Hyderabad" filter vs "Hyderabad, Telangana" data
+            // We only do this for locations longer than 3 chars to avoid false positives
+            if (city.length > 3 && (city.includes(target) || target.includes(city))) return true;
+
+            // If we match via district or constituency, we must ensure the city isn't just "telangana"
+            // unless the user specifically searched for "telangana".
+            if (district.length > 3 && (district.includes(target) || target.includes(district))) {
+                return (city !== 'telangana' || target === 'telangana');
+            }
+            if (constituency.length > 3 && (constituency.includes(target) || target.includes(constituency))) {
+                return (city !== 'telangana' || target === 'telangana');
+            }
+
+            return false;
+        });
+    }, [grievances, locationFilter]);
+
+    const selectedLocationTotal = useMemo(() => {
+        if (!locationFilter) return null;
+        const selected = uniqueLocations.find((loc) => String(loc.city).toLowerCase() === String(locationFilter).toLowerCase());
+        return selected?.count ?? null;
+    }, [locationFilter, uniqueLocations]);
+
+    const effectiveTotal = locationFilter
+        ? (selectedLocationTotal ?? displayedGrievances.length)
+        : (pagination.total || displayedGrievances.length);
 
     const xSources = sources.filter(s => s.platform === 'x');
     const fbSources = sources.filter(s => s.platform === 'facebook');
@@ -1478,7 +1533,7 @@ const Grievances = () => {
                                     <div className="space-y-4">
                                         {/* Results summary */}
                                         <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                                            <span>Showing {displayedGrievances.length}{pagination.total ? ` of ${pagination.total}` : ''} results</span>
+                                            <span>Showing {displayedGrievances.length}{effectiveTotal ? ` of ${effectiveTotal}` : ''} results</span>
                                         </div>
 
                                         {displayedGrievances.map((grievance) => (
