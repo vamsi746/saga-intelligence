@@ -266,9 +266,9 @@ const scanEventOnce = async ({ event, settings }) => {
             published_at: t.created_at ? new Date(t.created_at) : new Date(),
             engagement: {
               views: Number(t.metrics?.views || 0),
-              likes: Number(t.metrics?.likes || 0),
-              retweets: Number(t.metrics?.retweets || 0),
-              comments: Number(t.metrics?.reply || 0)
+              likes: Number(t.metrics?.like || t.metrics?.likes || 0),
+              retweets: Number(t.metrics?.retweet || t.metrics?.retweets || 0),
+              comments: Number(t.metrics?.reply || t.metrics?.comments || 0)
             },
             media: t.media || [],
             quoted_content: t.quoted_content,
