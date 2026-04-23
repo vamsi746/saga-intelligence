@@ -230,11 +230,11 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
     if (!distName) return;
     if (embedded) {
       const DistrictName = distName.replace(/\s*\(SC\)\s*$/, '').trim();
-      navigate(`/grievances?location=${encodeURIComponent(DistrictName)}&sentiment=negative`);
+      navigate(`/grievances?location=${encodeURIComponent(DistrictName)}`);
     } else {
       // Title-case the all-caps DIST_NAME from GeoJSON (e.g. "MAHABUBNAGAR" → "Mahabubnagar")
       const titleCased = distName.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-      navigate(`/grievances?location=${encodeURIComponent(titleCased)}&sentiment=negative`);
+      navigate(`/grievances?location=${encodeURIComponent(titleCased)}`);
     }
   }, [navigate, embedded]);
 

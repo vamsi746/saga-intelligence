@@ -293,8 +293,8 @@ const Grievances = () => {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
-    const [stats, setStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, converted_to_fir: 0 });
-    const [workflowStats, setWorkflowStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, fir: 0 });
+    const [, setStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, converted_to_fir: 0 });
+    const [, setWorkflowStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, fir: 0 });
     const [activeReportSubTab, setActiveReportSubTab] = useState('grievance'); // grievance, suggestion, criticism
     const [pagination, setPagination] = useState({ hasMore: false, nextCursor: null, total: 0 });
     const fetchAbortRef = useRef(null); // AbortController for cancelling stale requests
@@ -1302,7 +1302,7 @@ const Grievances = () => {
                         <select
                             value={topicFilter || ''}
                             onChange={(e) => setTopicFilter(e.target.value || null)}
-                            className="appearance-none bg-white border border-slate-200 rounded-md pl-7 pr-8 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 cursor-pointer"
+                            className="appearance-none bg-white border border-teal-400 rounded-md pl-7 pr-8 py-1.5 text-xs font-medium text-slate-700 hover:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
                         >
                             <option value="">All Topics</option>
                             {GRIEVANCE_TOPICS.map(t => (
@@ -1316,7 +1316,7 @@ const Grievances = () => {
                         <select
                             value={sentimentFilter || ''}
                             onChange={(e) => setSentimentFilter(e.target.value || null)}
-                            className="appearance-none bg-white border border-slate-200 rounded-md pl-7 pr-8 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 cursor-pointer"
+                            className="appearance-none bg-white border border-rose-400 rounded-md pl-7 pr-8 py-1.5 text-xs font-medium text-slate-700 hover:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 cursor-pointer"
                         >
                             <option value="">All Risk Levels</option>
                             <option value="positive">Positive</option>
@@ -1345,25 +1345,15 @@ const Grievances = () => {
             <GrievanceTopNavbar
                 activePlatform={navbarPlatform}
                 onPlatformChange={setNavbarPlatform}
-                activeStatus={navbarStatus}
-                onStatusChange={setNavbarStatus}
                 selectedHandle={selectedHandle}
                 onHandleChange={setSelectedHandle}
-                stats={stats}
-                workflowStats={workflowStats}
-                grievances={grievances}
                 sources={sources}
-                allowedStatuses={allowedNavbarStatuses}
                 onAddSource={() => {
                     if (navbarPlatform !== 'all') {
                         setAddSourcePlatform(navbarPlatform);
                     }
                     setShowAddSource(true);
                 }}
-                onRemoveSource={(source) => setDeleteConfirmSource(source)}
-                onFetchSourceHistory={(source) => setFetchDateDialog(source)}
-                onFetchKeywords={handleFetchKeywords}
-                fetchingSource={fetchingSource}
                 locationFilter={locationFilter}
                 onLocationChange={setLocationFilter}
                 uniqueLocations={uniqueLocations}
