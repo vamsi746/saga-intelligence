@@ -592,27 +592,27 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
     { name: 'Negative', value: negative, color: '#ef4444' },
   ].filter(d => d.value > 0);
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative w-[80px] h-[80px] shrink-0">
+    <div className="flex items-center gap-2.5">
+      <div className="relative h-[68px] w-[68px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" paddingAngle={2} strokeWidth={0}>
+            <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius="58%" outerRadius="88%" paddingAngle={2} strokeWidth={0}>
               {data.map((d, i) => <Cell key={i} fill={d.color} />)}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-sm font-bold text-foreground leading-none">{total}</span>
+          <span className="text-[13px] font-bold text-foreground leading-none">{total}</span>
           <span className="text-[7px] text-muted-foreground">total</span>
         </div>
       </div>
-      <div className="space-y-1 flex-1">
+      <div className="flex-1 space-y-0.5">
         {[
           { label: 'Pos', value: positive, color: '#10b981' },
           { label: 'Mod', value: neutral, color: '#f59e0b' },
           { label: 'Neg', value: negative, color: '#ef4444' },
         ].map(row => (
-          <div key={row.label} className="flex items-center justify-between text-[10px]">
+          <div key={row.label} className="flex items-center justify-between text-[9px]">
             <div className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: row.color }} />
               <span className="text-muted-foreground">{row.label}</span>
@@ -848,9 +848,9 @@ const Dashboard = () => {
         ];
 
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* ── Tile 1: Sentiment Distribution ── */}
-            <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden">
+            <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-4">
               <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 bg-violet-100 rounded-lg">
@@ -862,9 +862,9 @@ const Dashboard = () => {
                   View All <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
-              <div className="p-5 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8">
+              <div className="p-4 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5">
                 {/* Donut — large */}
-                <div className="relative shrink-0 w-[180px] h-[180px] sm:w-[220px] sm:h-[220px]">
+                <div className="relative shrink-0 w-[160px] h-[160px] sm:w-[190px] sm:h-[190px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" paddingAngle={3} strokeWidth={0}>
@@ -883,7 +883,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 {/* Breakdown */}
-                <div className="w-full sm:w-[220px] space-y-2.5">
+                <div className="w-full sm:w-[190px] space-y-2">
                   {sentimentRows.map(row => {
                     const pct = total ? Math.round(row.value / total * 100) : 0;
                     return (
@@ -940,13 +940,11 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
-                  {/* Left: detail panel (single selection only) */}
-                  {singleSelected && (
-                    <div className="w-[220px] flex-shrink-0 overflow-y-auto p-3 border-r border-border/30 custom-scrollbar">
-                      <MinisterDetailPanel minister={singleSelected} data={ministerData} />
-                    </div>
-                  )}
-                  {/* Map */}
+                  {/* Left: detail panel */}
+                  <div className="w-[190px] flex-shrink-0 overflow-y-auto p-2.5 border-r border-border/30 custom-scrollbar">
+                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
+                  </div>
+                  {/* Right: map */}
                   <div className="flex-1 min-w-0">
                     <TelanganaMap embedded highlightMinisters={selectedMinisters} />
                   </div>
@@ -954,7 +952,7 @@ const Dashboard = () => {
               </div>
             ) : (
               /* ── Default: neutral constituency map ── */
-              <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-1">
+              <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-8">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-slate-100 rounded-lg">
