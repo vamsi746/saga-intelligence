@@ -541,7 +541,7 @@ const XLayout = ({ grievance, getProxiedMediaUrl, onAction, downloadState = {} }
     };
 
     // Check if we have a parent tweet to display in a thread
-    const parentTweet = ctx.in_reply_to;
+    const parentTweet = ctx.in_reply_to?.tweet_id ? ctx.in_reply_to : ctx.thread_parent;
 
     return (
         <div className="flex flex-col">
@@ -669,7 +669,7 @@ const FacebookLayout = ({ grievance, getProxiedMediaUrl, onAction, downloadState
 
     // Parent post from context (for comment threads)
     const ctx = grievance.context || {};
-    const parentPost = ctx.in_reply_to;
+    const parentPost = ctx.in_reply_to?.tweet_id ? ctx.in_reply_to : ctx.thread_parent;
 
     return (
         <div>

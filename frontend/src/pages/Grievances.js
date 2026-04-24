@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
     Search, Shield, FileText, CheckCircle2, Calendar, Clock,
     AlertCircle, X, RefreshCw, Plus, Trash2, Loader2, Download,
-    Building2, Users, BadgeCheck, CalendarDays, Filter, ChevronDown, ExternalLink, Tag
+    Building2, Users, BadgeCheck, CalendarDays, Filter, ChevronDown, ExternalLink, Tag, MapPin
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -32,6 +32,7 @@ import { format } from 'date-fns';
 import { VideoPlayer, normalizeMediaList } from '../components/AlertCards';
 import { GrievanceCard } from '../components/grievances/GrievanceCard';
 import { GrievanceTopNavbar } from '../components/grievances/GrievanceTopNavbar';
+import { TopMlaWatchCard } from '../components/grievances/TopMlaWatchCard';
 import { CriticismPopup } from '../components/grievances/CriticismPopup';
 import { CriticismReports } from '../components/grievances/CriticismReports';
 import { GrievancePopup } from '../components/grievances/GrievancePopup';
@@ -43,7 +44,8 @@ import { SuggestionPopup } from '../components/grievances/SuggestionPopup';
 import { SuggestionReports } from '../components/grievances/SuggestionReports';
 import GrievanceAnalysisModal from '../components/grievances/GrievanceAnalysisModal';
 import { useRbac } from '../contexts/RbacContext';
-//added
+import { buildKeywordList, scoreRelevance } from '../utils/keywordService';
+import { TOP_10_MINISTERS } from '../data/telanganaMinistersData';
 /* ═══════════════════════════════════════════════════════════════ */
 /*                       MAIN COMPONENT                          */
 /* ═══════════════════════════════════════════════════════════════ */
@@ -339,16 +341,69 @@ const Grievances = () => {
     const [firNumber, setFirNumber] = useState('');
     const [updatingStatus, setUpdatingStatus] = useState(false);
 
+    // Politician context (populated when navigating from MLA panel)
+    const politicianContext = useMemo(() => {
+        const id = searchParams.get('politician_id');
+        const name = searchParams.get('politician_name');
+        const role = searchParams.get('politician_role');
+        const constituency = searchParams.get('location') || '';
+        if (!id && !name) return null;
+        return { id, name, shortName: name, role: role || 'MLA', constituency };
+    }, [searchParams]);
+
+    // MLA keyword management state — resets on politician change, persists for UI toggles
+    const prevPoliticianIdRef = useRef(null);
+    const [customKeywords, setCustomKeywords] = useState([]);
+    const [disabledKeywordIds, setDisabledKeywordIds] = useState(new Set());
+    const [newKeywordInput, setNewKeywordInput] = useState('');
+    const [showKeywordEditor, setShowKeywordEditor] = useState(false);
+
+    // Derived: full keyword list (system + custom) — recomputed on every entity/custom change
+    const mlaModeKeywords = useMemo(() => {
+        if (!politicianContext) return [];
+        const sys = buildKeywordList(politicianContext);
+        const custom = customKeywords.map((term, i) => ({
+            id: `custom_${i}`, term, type: 'custom', label: term, isSystem: false,
+        }));
+        return [...sys, ...custom];
+    }, [politicianContext, customKeywords]);
+
+    const activeMlaKeywords = useMemo(
+        () => mlaModeKeywords.filter(k => !disabledKeywordIds.has(k.id)),
+        [mlaModeKeywords, disabledKeywordIds]
+    );
+
     // Filters //
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
     const [platformFilter, setPlatformFilter] = useState('all');
     const [dateRange, setDateRange] = useState({ from: null, to: null });
     const [locationFilter, setLocationFilter] = useState(() => searchParams.get('location') || null);
 
+
+
     // Top Navbar Filters //
-    
+    const [selectedHandle, setSelectedHandle] = useState(() => searchParams.get('posted_by') || searchParams.get('handle') || null);
+    const [sentimentFilter, setSentimentFilter] = useState(() => searchParams.get('sentiment') || null);
+    const [topicFilter, setTopicFilter] = useState(() => normalizeTopicFilterLabel(searchParams.get('grievance_type')));
+    const [analysisCategoryFilter, setAnalysisCategoryFilter] = useState(() => searchParams.get('analysis_category') || null);
     const [navbarPlatform, setNavbarPlatform] = useState('all');
     const [navbarStatus, setNavbarStatus] = useState('total');
+
+    const showTopMlaGrid = !politicianContext
+        && activeTab === 'all'
+        && navbarStatus === 'total'
+        && platformFilter === 'all'
+        && navbarPlatform === 'all'
+        && !selectedHandle
+        && !sentimentFilter
+        && !topicFilter
+        && !analysisCategoryFilter
+        && !locationFilter
+        && !debouncedSearch
+        && !dateRange.from
+        && !dateRange.to;
+
+    const topMlaGridFilters = useMemo(() => ({}), []);
 
     const grievanceStatusFeatureMap = useMemo(() => ({
         total: 'all',
@@ -394,10 +449,7 @@ const Grievances = () => {
         return normalizedTopic;
     }, [normalizeTopicFilterLabel]);
 
-    const [selectedHandle, setSelectedHandle] = useState(() => searchParams.get('posted_by') || searchParams.get('handle') || null);
-    const [sentimentFilter, setSentimentFilter] = useState(() => searchParams.get('sentiment') || null);
-    const [topicFilter, setTopicFilter] = useState(() => normalizeTopicFilterLabel(searchParams.get('grievance_type')));
-    const [analysisCategoryFilter, setAnalysisCategoryFilter] = useState(() => searchParams.get('analysis_category') || null);
+    // ...existing code...
     const GRIEVANCE_TOPICS = [
         'Political Criticism', 'Hate Speech', 'Public Complaint', 'Corruption Complaint',
         'General Complaint', 'Traffic Complaint', 'Public Nuisance', 'Road & Infrastructure',
@@ -532,14 +584,60 @@ const Grievances = () => {
         }
     };
 
+    /* ─── Politician mode: reset custom keywords when MLA changes ─── */
+    useEffect(() => {
+        const id = politicianContext?.id || null;
+        if (id !== prevPoliticianIdRef.current) {
+            prevPoliticianIdRef.current = id;
+            setCustomKeywords([]);
+            setDisabledKeywordIds(new Set());
+            setNewKeywordInput('');
+        }
+    }, [politicianContext]);
+
+    /* ─── Keyword action handlers ─── */
+    const toggleMlaKeyword = (kwId) => {
+        setDisabledKeywordIds(prev => {
+            const next = new Set(prev);
+            if (next.has(kwId)) next.delete(kwId); else next.add(kwId);
+            return next;
+        });
+    };
+
+    const addMlaKeyword = () => {
+        const term = newKeywordInput.trim();
+        if (!term || customKeywords.includes(term)) return;
+        setCustomKeywords(prev => [...prev, term]);
+        setNewKeywordInput('');
+    };
+
+    const removeMlaKeyword = (term) => {
+        setCustomKeywords(prev => prev.filter(t => t !== term));
+    };
+
+    const clearPoliticianMode = useCallback(() => {
+        setSearchParams(new URLSearchParams());
+    }, [setSearchParams]);
+
     /* ─── Data Fetching ─── */
     useEffect(() => { fetchSources(); fetchLocationStats(); }, []);
     useEffect(() => {
         if (!navbarStatus) return;
         if (!allowedNavbarStatuses.includes(navbarStatus)) return;
         fetchDashboardStats();
-        fetchGrievances();
-    }, [activeTab, platformFilter, dateRange, debouncedSearch, navbarPlatform, navbarStatus, selectedHandle, sentimentFilter, topicFilter, analysisCategoryFilter, locationFilter, allowedNavbarStatuses]);
+        if (showTopMlaGrid) {
+            setLoading(false);
+            setGrievances([]);
+            setPagination({ hasMore: false, nextCursor: null, total: 0 });
+            return;
+        }
+        if (politicianContext) {
+            fetchPoliticianGrievances();
+        } else {
+            fetchGrievances();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, platformFilter, dateRange, debouncedSearch, navbarPlatform, navbarStatus, selectedHandle, sentimentFilter, topicFilter, analysisCategoryFilter, locationFilter, allowedNavbarStatuses, politicianContext, disabledKeywordIds, customKeywords, showTopMlaGrid]);
 
     const fetchSources = async () => {
         setSourcesLoading(true);
@@ -569,6 +667,87 @@ const Grievances = () => {
             }
         } catch (error) {
             console.error('Failed to fetch stats', error);
+        }
+    };
+
+    /* ─── Politician-mode fetch: multi-keyword parallel, merged + relevance-scored ─── */
+    const fetchPoliticianGrievances = async () => {
+        if (!politicianContext) return;
+
+        const activeKws = activeMlaKeywords;
+        if (!activeKws.length) {
+            setGrievances([]);
+            setPagination({ hasMore: false, nextCursor: null, total: 0 });
+            return;
+        }
+
+        if (fetchAbortRef.current) fetchAbortRef.current.abort();
+        setLoading(true);
+        setGrievances([]);
+
+        const commonParams = {};
+        if (navbarStatus && navbarStatus !== 'total' && navbarStatus !== 'reports') commonParams.status_filter = navbarStatus;
+        if (navbarPlatform !== 'all') commonParams.platform = navbarPlatform;
+        if (sentimentFilter) commonParams.sentiment = sentimentFilter;
+        if (topicFilter) commonParams.grievance_type = mapTopicFilterToApi(topicFilter);
+
+        try {
+            // One request per active keyword (capped at 6 parallel)
+            const nameRequests = activeKws
+                .filter(k => k.type !== 'constituency')
+                .slice(0, 5)
+                .map(kw =>
+                    api.get('/grievances', { params: { search: kw.term, limit: 40, ...commonParams } })
+                        .catch(() => ({ data: { grievances: [] } }))
+                );
+
+            // Constituency fetch (indirect mentions)
+            const constReq = politicianContext.constituency
+                ? api.get('/grievances', {
+                    params: {
+                        location_city: politicianContext.constituency.toLowerCase(),
+                        location: politicianContext.constituency.toLowerCase(),
+                        limit: 30,
+                        ...commonParams,
+                    },
+                }).catch(() => ({ data: { grievances: [] } }))
+                : Promise.resolve({ data: { grievances: [] } });
+
+            const responses = await Promise.all([...nameRequests, constReq]);
+
+            // Merge + deduplicate by grievance ID
+            const seen = new Set();
+            const merged = [];
+            responses.forEach(res => {
+                (Array.isArray(res.data?.grievances) ? res.data.grievances : []).forEach(g => {
+                    if (g.id && !seen.has(g.id)) {
+                        seen.add(g.id);
+                        merged.push(g);
+                    }
+                });
+            });
+
+            // Relevance scoring and sorting
+            const scored = merged.map(g => {
+                const text = [
+                    g.content?.full_text,
+                    g.content?.text,
+                    g.posted_by?.name,
+                    g.posted_by?.display_name,
+                    g.location_city,
+                ].filter(Boolean).join(' ');
+                return { ...g, _relevanceScore: scoreRelevance(text, activeKws) };
+            });
+            scored.sort((a, b) => b._relevanceScore - a._relevanceScore);
+
+            setGrievances(scored);
+            setPagination({ hasMore: false, nextCursor: null, total: scored.length });
+        } catch (err) {
+            if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') {
+                console.error('[MLA mode] Failed to fetch politician grievances', err);
+            }
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -1260,6 +1439,137 @@ const Grievances = () => {
     return (
         <div className="p-4 md:p-6 space-y-0 bg-slate-50 min-h-screen flex flex-col">
 
+            {/* ─── MLA Isolation Mode Banner ─── */}
+            {politicianContext && (() => {
+                const kwTypeStyle = {
+                    primary: 'bg-indigo-600 text-white border-indigo-600',
+                    constituency: 'bg-blue-500 text-white border-blue-500',
+                    alias: 'bg-violet-500 text-white border-violet-500',
+                    custom: 'bg-emerald-600 text-white border-emerald-600',
+                };
+                const activeCount = activeMlaKeywords.length;
+
+                return (
+                    <div className="mx-2 mt-2 mb-0 border border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-violet-50/50 rounded-xl shadow-sm overflow-hidden">
+                        {/* ── Header Row ── */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-100">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-100 rounded-lg">
+                                    <Users className="h-4 w-4 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-[13px] font-bold text-indigo-900">{politicianContext.name}</span>
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-600 text-white uppercase tracking-wide">
+                                            {politicianContext.role}
+                                        </span>
+                                        {politicianContext.constituency && (
+                                            <span className="flex items-center gap-1 text-[10px] font-medium text-indigo-600">
+                                                <MapPin className="h-2.5 w-2.5" />
+                                                {politicianContext.constituency.charAt(0).toUpperCase() + politicianContext.constituency.slice(1)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-indigo-500 mt-0.5">
+                                        {grievances.length} results matched · {activeCount} active keyword{activeCount !== 1 ? 's' : ''} · {mlaModeKeywords.length - activeCount} paused
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setShowKeywordEditor(v => !v)}
+                                    className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors border ${showKeywordEditor ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}
+                                >
+                                    <Tag className="h-3 w-3" />
+                                    Keywords
+                                </button>
+                                <button
+                                    onClick={clearPoliticianMode}
+                                    className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-red-600 px-2 py-1 rounded-lg border border-transparent hover:border-red-200 hover:bg-red-50 transition-all"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                    Exit MLA Mode
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── Keyword Pills Row ── */}
+                        <div className="px-4 py-2.5 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-semibold text-indigo-400 mr-0.5 shrink-0">Filters:</span>
+                            {mlaModeKeywords.map(kw => {
+                                const isDisabled = disabledKeywordIds.has(kw.id);
+                                return (
+                                    <button
+                                        key={kw.id}
+                                        onClick={() => toggleMlaKeyword(kw.id)}
+                                        title={isDisabled ? 'Click to enable' : 'Click to pause'}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold transition-all cursor-pointer select-none ${
+                                            isDisabled
+                                                ? 'bg-white text-slate-400 border-slate-200 line-through opacity-60'
+                                                : (kwTypeStyle[kw.type] || kwTypeStyle.primary)
+                                        }`}
+                                    >
+                                        {kw.label}
+                                        {!kw.isSystem && (
+                                            <span
+                                                onClick={e => { e.stopPropagation(); removeMlaKeyword(kw.term); }}
+                                                className="ml-0.5 text-[11px] leading-none hover:opacity-60"
+                                            >×</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+
+                            {/* Inline add-keyword input */}
+                            <div className="inline-flex items-center gap-1">
+                                <input
+                                    type="text"
+                                    value={newKeywordInput}
+                                    onChange={e => setNewKeywordInput(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && addMlaKeyword()}
+                                    placeholder="+ add keyword"
+                                    className="h-[22px] px-2 text-[10px] border border-dashed border-indigo-300 rounded-full outline-none focus:border-indigo-500 bg-transparent w-28 text-indigo-700 placeholder:text-indigo-300"
+                                />
+                                {newKeywordInput.trim() && (
+                                    <button
+                                        onClick={addMlaKeyword}
+                                        className="h-[22px] px-2 text-[10px] bg-emerald-600 text-white rounded-full font-bold hover:bg-emerald-700 transition-colors"
+                                    >
+                                        +
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Keyword Legend (shown when editor open) ── */}
+                        {showKeywordEditor && (
+                            <div className="px-4 pb-3 flex flex-wrap items-center gap-3 text-[10px]">
+                                {[
+                                    { type: 'primary', label: 'Name keywords' },
+                                    { type: 'constituency', label: 'Constituency' },
+                                    { type: 'alias', label: 'Known aliases' },
+                                    { type: 'custom', label: 'Your additions' },
+                                ].map(({ type, label }) => (
+                                    <div key={type} className="flex items-center gap-1.5">
+                                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${type === 'primary' ? 'bg-indigo-600' : type === 'constituency' ? 'bg-blue-500' : type === 'alias' ? 'bg-violet-500' : 'bg-emerald-600'}`} />
+                                        <span className="text-slate-500">{label}</span>
+                                    </div>
+                                ))}
+                                <span className="text-slate-400 ml-2">· Click any keyword to pause/resume · Strikethrough = paused</span>
+                            </div>
+                        )}
+
+                        {/* ── Isolation mode footer ── */}
+                        <div className="px-4 py-1.5 bg-indigo-900/5 border-t border-indigo-100 flex items-center gap-2">
+                            <Shield className="h-3 w-3 text-indigo-400 shrink-0" />
+                            <span className="text-[10px] text-indigo-500">
+                                Strict isolation mode — only content matching <span className="font-semibold">{politicianContext.name}</span>'s keywords is shown. No cross-MLA data.
+                            </span>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* ─── Page Header ─── */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2 py-4">
                 <div>
@@ -1499,7 +1809,39 @@ const Grievances = () => {
                         >
                             {/* 60%: Grievances */}
                             <div className="space-y-4 relative z-10">
-                                {loading ? (
+                                {showTopMlaGrid ? (
+                                    <div className="space-y-4">
+                                        <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4 shadow-sm">
+                                            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                                <div>
+                                                    <h3 className="text-base font-semibold text-slate-900">Top 10 MLA Watch Grid</h3>
+                                                    <p className="mt-1 text-sm text-slate-500">
+                                                        Related content for the top 10 MLAs refreshes automatically every 10 minutes. Each card below shows the full thread context for the most relevant recent posts.
+                                                    </p>
+                                                </div>
+                                                <div className="shrink-0 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                                                    2-column monitoring view
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start">
+                                            {TOP_10_MINISTERS.map((politician, index) => (
+                                                <TopMlaWatchCard
+                                                    key={politician.id}
+                                                    politician={politician}
+                                                    rank={index + 1}
+                                                    filters={topMlaGridFilters}
+                                                    onAction={handleAction}
+                                                    getProxiedMediaUrl={getProxiedMediaUrl}
+                                                    downloadStates={downloadStates}
+                                                    actionedGrievanceIds={actionedGrievanceIds}
+                                                    selectedGrievanceId={selectedGrievance?.id}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : loading ? (
                                     <div className="flex flex-col items-center justify-center p-12 bg-white rounded-lg border border-slate-200">
                                         <Loader2 className="h-8 w-8 animate-spin text-slate-400 mb-3" />
                                         <p className="text-sm text-muted-foreground">Loading grievances...</p>

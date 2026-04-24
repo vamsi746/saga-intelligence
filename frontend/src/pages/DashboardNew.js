@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 // ...existing imports...
 import ReactPlayer from 'react-player';
 import { Link, useNavigate } from 'react-router-dom';
+import { buildGrievancesUrl } from '../utils/politicianNavigation';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   Shield, AlertTriangle, Send,
@@ -413,7 +414,8 @@ const DroneViewStrip = () => {
 };
 
 // ─── Ministers Panel ────────────────────────────────────────────────────────
-const MinistersPanel = ({ selectedId, onSelect }) => {
+const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selectedCount = 0 }) => {
+  const navigate = useNavigate();
   const scrollRef = useRef(null);
   const top10Ids = new Set(TOP_10_MINISTERS.map((m) => m.id));
 
@@ -431,10 +433,23 @@ const MinistersPanel = ({ selectedId, onSelect }) => {
           </div>
           <div>
             <h3 className="text-[13px] font-semibold text-foreground">Telangana Congress MLAs</h3>
-            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to view constituency</p>
+            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to highlight constituency</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {selectedCount > 0 && (
+            <>
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                {selectedCount} selected
+              </span>
+              <button
+                onClick={onClearAll}
+                className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
+              >
+                Clear all
+              </button>
+            </>
+          )}
           <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-full px-2 py-0.5">
             <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500" />
             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">Top 10 Active</span>
@@ -457,11 +472,11 @@ const MinistersPanel = ({ selectedId, onSelect }) => {
         {TELANGANA_MINISTERS.map((minister) => {
           const isTop10 = top10Ids.has(minister.id);
           const rank = TOP_10_MINISTERS.findIndex((m) => m.id === minister.id) + 1;
-          const isSelected = selectedId === minister.id;
+          const isSelected = selectedIds.has(minister.id);
           return (
             <button
               key={minister.id}
-              onClick={() => onSelect(isSelected ? null : minister)}
+              onClick={() => onToggle(minister)}
               className={`flex-shrink-0 w-[180px] flex flex-col items-center gap-2 p-3 rounded-xl border transition-all duration-200 bg-card group cursor-pointer text-left relative overflow-hidden
                 ${isSelected
                   ? 'border-2 shadow-lg scale-[1.04]'
@@ -540,11 +555,23 @@ const MinistersPanel = ({ selectedId, onSelect }) => {
                 </div>
               </div>
 
-              {/* Selected indicator */}
+              {/* Selected indicator + View Grievances */}
               {isSelected && (
-                <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
-                  style={{ background: minister.color }}>
-                  Selected ✓
+                <div className="w-full flex flex-col gap-1">
+                  <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
+                    style={{ background: minister.color }}>
+                    Selected ✓
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(buildGrievancesUrl(minister));
+                    }}
+                    className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
+                    style={{ borderColor: minister.color, color: minister.color, background: `${minister.color}10` }}
+                  >
+                    View Grievances →
+                  </button>
                 </div>
               )}
             </button>
@@ -680,19 +707,28 @@ const MinisterDetailPanel = ({ minister, data }) => {
 
 const Dashboard = () => {
   const { dashboardData, loading, fetchDashboardData, refreshDashboard, hasCachedData } = useDashboard();
+  const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMinister, setSelectedMinister] = useState(null);
+  const [selectedMinisters, setSelectedMinisters] = useState([]);
+  const singleSelected = selectedMinisters.length === 1 ? selectedMinisters[0] : null;
   const [ministerData, setMinisterData] = useState(null);
   const [ministerDataLoading, setMinisterDataLoading] = useState(false);
 
+  const toggleMinister = useCallback((minister) => {
+    setSelectedMinisters(prev => {
+      const exists = prev.some(m => m.id === minister.id);
+      return exists ? prev.filter(m => m.id !== minister.id) : [...prev, minister];
+    });
+  }, []);
+
   useEffect(() => {
-    if (!selectedMinister) { setMinisterData(null); return; }
+    if (!singleSelected) { setMinisterData(null); return; }
     setMinisterDataLoading(true);
-    api.get('/grievances/location-summary', { params: { location_city: selectedMinister.constituency.toLowerCase() } })
+    api.get('/grievances/location-summary', { params: { location_city: singleSelected.constituency.toLowerCase() } })
       .then(r => setMinisterData(r.data || null))
       .catch(() => setMinisterData(null))
       .finally(() => setMinisterDataLoading(false));
-  }, [selectedMinister]);
+  }, [singleSelected]);
 
   const [alertType, setAlertType] = useState('active');
   const [alertPlatform, setAlertPlatform] = useState('all');
@@ -785,8 +821,10 @@ const Dashboard = () => {
 
       {/* Ministers Panel */}
       <MinistersPanel
-        selectedId={selectedMinister?.id}
-        onSelect={setSelectedMinister}
+        selectedIds={new Set(selectedMinisters.map(m => m.id))}
+        onToggle={toggleMinister}
+        onClearAll={() => setSelectedMinisters([])}
+        selectedCount={selectedMinisters.length}
       />
 
       {/* Grievance Sentiment Analytics */}
@@ -871,31 +909,46 @@ const Dashboard = () => {
             </Card>
 
             {/* Constituency Map / Minister Detail */}
-            {selectedMinister ? (
-              /* ── Minister selected: full detail layout ── */
+            {selectedMinisters.length > 0 ? (
+              /* ── One or more MLAs selected ── */
               <div className="lg:col-span-1 border border-border/50 rounded-xl overflow-hidden shadow-sm"
-                style={{ borderColor: `${selectedMinister.color}40` }}>
+                style={{ borderColor: singleSelected ? `${singleSelected.color}40` : '#e2e8f0' }}>
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30"
-                  style={{ background: `linear-gradient(to right, ${selectedMinister.color}12, transparent)` }}>
+                  style={singleSelected ? { background: `linear-gradient(to right, ${singleSelected.color}12, transparent)` } : {}}>
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg" style={{ background: `${selectedMinister.color}20` }}>
-                      <BarChart3 className="h-3.5 w-3.5" style={{ color: selectedMinister.color }} />
+                    <div className="p-1.5 rounded-lg" style={{ background: singleSelected ? `${singleSelected.color}20` : '#f1f5f9' }}>
+                      <BarChart3 className="h-3.5 w-3.5" style={{ color: singleSelected?.color || '#64748b' }} />
                     </div>
-                    <h3 className="text-[13px] font-semibold text-foreground">{selectedMinister.constituency} Constituency</h3>
+                    <h3 className="text-[13px] font-semibold text-foreground">
+                      {singleSelected
+                        ? `${singleSelected.constituency} Constituency`
+                        : `${selectedMinisters.length} Constituencies Selected`}
+                    </h3>
                   </div>
                   <div className="flex items-center gap-2">
                     {ministerDataLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                    <button onClick={() => setSelectedMinister(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors">✕ Clear</button>
+                    {singleSelected && (
+                      <button
+                        onClick={() => navigate(buildGrievancesUrl(singleSelected))}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded hover:opacity-80 transition-opacity text-white"
+                        style={{ background: singleSelected.color }}
+                      >
+                        View Grievances →
+                      </button>
+                    )}
+                    <button onClick={() => setSelectedMinisters([])} className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors">✕ Clear All</button>
                   </div>
                 </div>
                 <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
-                  {/* Left: detail panel */}
-                  <div className="w-[220px] flex-shrink-0 overflow-y-auto p-3 border-r border-border/30 custom-scrollbar">
-                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
-                  </div>
-                  {/* Right: map */}
+                  {/* Left: detail panel (single selection only) */}
+                  {singleSelected && (
+                    <div className="w-[220px] flex-shrink-0 overflow-y-auto p-3 border-r border-border/30 custom-scrollbar">
+                      <MinisterDetailPanel minister={singleSelected} data={ministerData} />
+                    </div>
+                  )}
+                  {/* Map */}
                   <div className="flex-1 min-w-0">
-                    <TelanganaMap embedded highlightMinister={selectedMinister} />
+                    <TelanganaMap embedded highlightMinisters={selectedMinisters} />
                   </div>
                 </div>
               </div>
@@ -909,7 +962,7 @@ const Dashboard = () => {
                     </div>
                     <h3 className="text-[13px] font-semibold text-foreground">Telangana Constituencies</h3>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-medium">Select a minister to view constituency</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">Select an MLA to view constituency</span>
                 </div>
                 <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
                   <div className="w-full h-[480px]">
