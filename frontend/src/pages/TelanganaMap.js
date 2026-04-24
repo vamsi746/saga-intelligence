@@ -9,7 +9,6 @@ import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Tag, MapPin, ArrowLeft, Crown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { TELANGANA_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
-import { getMandalsForConstituency } from '../data/telanganaConstituencyMandals';
 
 // Normalize AC names for matching: strip reservation suffixes (SC/ST/MBC) and fix known
 // spelling discrepancies between our data and the GeoJSON AC_NAME field.
@@ -70,12 +69,6 @@ const SENTIMENT_TIERS = {
   low:     { fill: '#86efac', hover: '#4ade80', stroke: '#22c55e' },
   none:    { fill: '#e2e8f0', hover: '#cbd5e1', stroke: '#94a3b8' },
 };
-
-const MANDAL_COLORS = [
-  '#bfdbfe', '#bbf7d0', '#fde68a', '#fecdd3', '#ddd6fe', '#bae6fd',
-  '#fed7aa', '#a7f3d0', '#fda4af', '#c7d2fe', '#d9f99d', '#fbcfe8',
-  '#99f6e4', '#fef08a', '#e9d5ff', '#bfdbfe', '#fdba74', '#86efac',
-];
 
 const getSentimentColors = (stats) => {
   if (!stats || stats.count === 0) return SENTIMENT_TIERS.none;
@@ -451,6 +444,18 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
     return out;
   }, [displayGeojson, geojson, projection]);
 
+  const selectedLabelPoint = useMemo(() => {
+    if (!selectedConstituencyName || !displayGeojson?.features?.length || !projection) return null;
+    const feature = displayGeojson.features[0];
+    const centroid = projection(geoCentroid(feature));
+    if (!centroid) return null;
+    const [x, y] = centroid;
+    return {
+      x: mapPan.x + dims.w / 2 + mapZoom * (x - dims.w / 2),
+      y: mapPan.y + dims.h / 2 + mapZoom * (y - dims.h / 2),
+    };
+  }, [selectedConstituencyName, displayGeojson, projection, mapPan.x, mapPan.y, mapZoom, dims.w, dims.h]);
+
   const handleMouseMove = (e, distName) => {
     clearHoverHideTimer();
     const rect = svgRef.current?.getBoundingClientRect();
@@ -504,114 +509,6 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
       dragRef.current = { active: false, pointerId: null, x: 0, y: 0 };
     }
   }, []);
-
-  const renderMandalSegments = useCallback((feature, keyPrefix) => {
-    if (!feature || !pathGenerator) return null;
-    const bounds = pathGenerator.bounds(feature);
-    if (!bounds) return null;
-    const [[x0, y0], [x1, y1]] = bounds;
-    const width = x1 - x0;
-    const height = y1 - y0;
-    if (width <= 0 || height <= 0) return null;
-
-    const clipId = `mandal-clip-${keyPrefix}`;
-
-    // Look up actual mandal names for this constituency
-    const acName = feature.properties?.AC_NAME || '';
-    const mandals = getMandalsForConstituency(acName);
-    const N = mandals.length > 0 ? mandals.length : 6;
-    const cols = Math.ceil(Math.sqrt(N));
-    const rows = Math.ceil(N / cols);
-    const cellW = width / cols;
-    const cellH = height / rows;
-
-    // Determine font size based on cell dimensions
-    const minDim = Math.min(cellW, cellH);
-    const fontSize = minDim > 60 ? '9px' : minDim > 35 ? '7.5px' : '6px';
-
-    const cells = Array.from({ length: N }, (_, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const cx = x0 + col * cellW;
-      const cy = y0 + row * cellH;
-      const mandalName = mandals[i] || `Zone ${i + 1}`;
-      const color = MANDAL_COLORS[i % MANDAL_COLORS.length];
-      // Split long names at space for wrapping
-      const nameParts = mandalName.split(' ');
-      const line1 = nameParts.slice(0, Math.ceil(nameParts.length / 2)).join(' ');
-      const line2 = nameParts.length > 1 ? nameParts.slice(Math.ceil(nameParts.length / 2)).join(' ') : null;
-      const textY = cy + cellH / 2 + (line2 ? -4 : 0);
-
-      return (
-        <g key={`cell-${i}`}>
-          <rect x={cx} y={cy} width={cellW + 0.5} height={cellH + 0.5} fill={color} opacity={0.88} />
-          {/* cell borders */}
-          <line x1={cx} x2={cx + cellW} y1={cy} y2={cy} stroke="#475569" strokeWidth={0.8} style={{ vectorEffect: 'non-scaling-stroke' }} opacity={0.7} />
-          <line x1={cx} x2={cx} y1={cy} y2={cy + cellH} stroke="#475569" strokeWidth={0.8} style={{ vectorEffect: 'non-scaling-stroke' }} opacity={0.7} />
-          {/* mandal name label */}
-          <text
-            x={cx + cellW / 2}
-            y={textY}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            style={{
-              fontSize,
-              fontWeight: 700,
-              fill: '#1e293b',
-              stroke: 'rgba(255,255,255,0.85)',
-              strokeWidth: 2.5,
-              paintOrder: 'stroke',
-              pointerEvents: 'none',
-              userSelect: 'none',
-            }}
-          >
-            {line1}
-          </text>
-          {line2 && (
-            <text
-              x={cx + cellW / 2}
-              y={textY + 10}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              style={{
-                fontSize,
-                fontWeight: 700,
-                fill: '#1e293b',
-                stroke: 'rgba(255,255,255,0.85)',
-                strokeWidth: 2.5,
-                paintOrder: 'stroke',
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
-            >
-              {line2}
-            </text>
-          )}
-        </g>
-      );
-    });
-
-    return (
-      <g key={`mandals-${keyPrefix}`}>
-        <defs>
-          <clipPath id={clipId}>
-            <path d={pathGenerator(feature)} />
-          </clipPath>
-        </defs>
-        <g clipPath={`url(#${clipId})`}>
-          {cells}
-        </g>
-        {/* Constituency outline on top */}
-        <path
-          d={pathGenerator(feature)}
-          fill="none"
-          stroke="#0f172a"
-          strokeWidth={2}
-          style={{ vectorEffect: 'non-scaling-stroke' }}
-        />
-      </g>
-    );
-  }, [pathGenerator]);
 
   const totalSentiment = useMemo(() => {
     // Use state-level distribution from sentiment analytics API
@@ -667,6 +564,10 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
   if (embedded) {
     const hasSelection = Boolean(selectedConstituencyName);
     const embeddedFeatures = displayGeojson?.features || geojson.features;
+    const embeddedSelectedStats = hasSelection
+      ? (byAC[embeddedFeatures[0]?.properties?.AC_NAME] || activeConstituencyData)
+      : null;
+    const embeddedSelectedColors = getSentimentColors(embeddedSelectedStats);
 
     return (
       <div className="relative w-full h-full bg-slate-50 overflow-hidden" ref={containerRef}>
@@ -703,28 +604,30 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
           </div>
         )}
 
-        {/* Mandal legend for embedded constituency view */}
-        {hasSelection && (() => {
-          const constituencyName = embeddedFeatures[0]?.properties?.AC_NAME || '';
-          const mandals = getMandalsForConstituency(constituencyName);
-          if (mandals.length === 0) return null;
-          return (
-            <div className="absolute top-2 right-2 z-10 bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg px-2 py-1.5 shadow-sm max-w-[140px]">
-              <div className="text-[9px] font-bold text-slate-600 mb-1 uppercase tracking-wide">Mandals</div>
-              <div className="space-y-0.5 max-h-[180px] overflow-y-auto">
-                {mandals.map((m, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <span
-                      className="inline-block w-2 h-2 rounded-[2px] flex-shrink-0"
-                      style={{ background: MANDAL_COLORS[i % MANDAL_COLORS.length] }}
-                    />
-                    <span className="text-[9px] text-slate-700 leading-tight truncate">{m}</span>
-                  </div>
-                ))}
-              </div>
+        {hasSelection && selectedLabelPoint && (
+          <div
+            className="pointer-events-none absolute z-10"
+            style={{
+              left: selectedLabelPoint.x,
+              top: selectedLabelPoint.y,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-md backdrop-blur-sm">
+              <MapPin className="h-3 w-3 text-emerald-600" />
+              <span>{highlightMinister?.constituency || highlightMinisters?.[0]?.constituency || 'Constituency'}</span>
             </div>
-          );
-        })()}
+          </div>
+        )}
+
+        <div className="absolute bottom-2 right-2 z-10 flex max-w-[240px] flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-200 bg-white/90 px-2 py-1.5 text-[9px] text-slate-600 shadow-sm backdrop-blur-sm">
+          <span className="flex items-center gap-1"><span className="h-3 w-3 rounded border border-slate-300" style={{ background: SENTIMENT_TIERS.none.fill }} /> No Data</span>
+          <span className="flex items-center gap-1"><span className="h-3 w-3 rounded" style={{ background: SENTIMENT_TIERS.low.fill }} /> Low Positive</span>
+          <span className="flex items-center gap-1"><span className="h-3 w-3 rounded" style={{ background: SENTIMENT_TIERS.medium.fill }} /> Medium Positive</span>
+          <span className="flex items-center gap-1"><span className="h-3 w-3 rounded" style={{ background: SENTIMENT_TIERS.high.fill }} /> High Positive</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> Positive</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> Negative</span>
+        </div>
 
         <svg
           ref={svgRef}
@@ -743,7 +646,15 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
           <g transform={`translate(${mapPan.x} ${mapPan.y}) translate(${dims.w / 2} ${dims.h / 2}) scale(${mapZoom}) translate(${-dims.w / 2} ${-dims.h / 2})`}>
             {embeddedFeatures.map((f, i) => (
               hasSelection ? (
-                renderMandalSegments(f, `embedded-${i}`)
+                <path
+                  key={i}
+                  d={pathGenerator(f.geometry)}
+                  fill={embeddedSelectedColors.fill}
+                  stroke={embeddedSelectedColors.stroke}
+                  strokeWidth={1.2}
+                  style={{ vectorEffect: 'non-scaling-stroke' }}
+                  className="transition-colors duration-150"
+                />
               ) : (
                 <path
                   key={i}
@@ -1028,16 +939,19 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
                 const colors = getSentimentColors(distStats);
                 if (isSelectedAC) {
                   return (
-                    <g
+                    <path
                       key={i}
-                      className="cursor-pointer"
+                      d={pathGenerator(f.geometry)}
+                      fill={isHov ? colors.hover : colors.fill}
+                      stroke={isHov ? '#0f172a' : colors.stroke}
+                      strokeWidth={isHov ? 2.5 : 1.2}
+                      opacity={hoveredDistrict && !isHov ? 0.65 : 1}
+                      className="cursor-pointer transition-all duration-150"
                       onMouseEnter={(e) => handleMouseMove(e, hoverKey)}
                       onMouseMove={(e) => handleMouseMove(e, hoverKey)}
                       onMouseLeave={scheduleHoverHide}
                       onClick={() => handleDistrictClick(hoverKey)}
-                    >
-                      {renderMandalSegments(f, `standalone-${i}`)}
-                    </g>
+                    />
                   );
                 }
 
@@ -1096,28 +1010,6 @@ const TelanganaMap = ({ embedded = false, highlightMinister = null, highlightMin
                 </>
               )}
             </div>
-
-            {/* Mandal legend — shown when a constituency is selected */}
-            {isMinisterView && urlParams.constituency && (() => {
-              const mandals = getMandalsForConstituency(urlParams.constituency);
-              if (mandals.length === 0) return null;
-              return (
-                <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg px-3 py-2 shadow-md max-w-[200px]">
-                  <div className="text-[10px] font-bold text-slate-700 mb-1.5 uppercase tracking-wide">Mandals</div>
-                  <div className="space-y-0.5 max-h-[240px] overflow-y-auto">
-                    {mandals.map((m, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        <span
-                          className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-slate-300"
-                          style={{ background: MANDAL_COLORS[i % MANDAL_COLORS.length] }}
-                        />
-                        <span className="text-[10px] text-slate-700 leading-tight">{m}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* Hover tooltip */}
             {hoveredDistrict && (
