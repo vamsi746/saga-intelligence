@@ -156,7 +156,22 @@ const buildListQuery = (params = {}, options = {}) => {
     if (status) query['complaint.status'] = status;
     const effectiveTaggedAccount = tagged_account || handle;
     if (effectiveTaggedAccount) {
-        query.tagged_account_normalized = normalizeTaggedAccount(effectiveTaggedAccount);
+        // Match a leader's handle against:
+        //   (a) tagged_account_normalized   — post directly tagged the leader
+        //   (b) linked_persons.handle_normalized — leader was identified in the
+        //       content by name (e.g. "Revanth Reddy did good work" → tagged
+        //       under @revanth_anumula even though the post didn't @-mention him).
+        const normalized = normalizeTaggedAccount(effectiveTaggedAccount);
+        const handleOr = [
+            { tagged_account_normalized: normalized },
+            { 'linked_persons.handle_normalized': normalized }
+        ];
+        if (query.$or) {
+            query.$and = [...(query.$and || []), { $or: query.$or }, { $or: handleOr }];
+            delete query.$or;
+        } else {
+            query.$or = handleOr;
+        }
     }
     if (posted_by_handle) {
         query['posted_by.handle'] = { $regex: new RegExp(`^@?${escapeRegex(String(posted_by_handle).replace(/^@/, '').trim())}$`, 'i') };
@@ -698,6 +713,8 @@ const getGrievances = async (req, res) => {
             'suggestion.category': 1,
             escalation_count: 1,
             'analysis.sentiment': 1,
+            'analysis.target_party': 1,
+            'analysis.stance': 1,
             'analysis.grievance_type': 1,
             'analysis.category': 1,
             'analysis.risk_level': 1,

@@ -334,13 +334,22 @@ const grievanceSchema = new mongoose.Schema({
     confidence: { type: String },
     source: { type: String }
   },
-  // Persons (MPs, MLAs, CM) identified in the content or via tagging
+  // Persons (MPs, MLAs, CM, opposition leaders) identified in the content or via tagging.
+  // Used by:
+  //   - Grievance handle filter: a post matches a leader if they're identified here,
+  //     even when the post wasn't directly tagged to them (handle_normalized).
+  //   - Sentiment perspective: side = 'ours' | 'opposition' lets the LLM/UI decide
+  //     whether the post is for or against the client.
   linked_persons: [{
     person_id: { type: String },
     name: { type: String },
     role: { type: String },
     district: { type: String },
     constituency: { type: String },
+    side: { type: String, enum: ['ours', 'opposition'] },
+    party: { type: String },
+    handle: { type: String },                  // primary handle (e.g. @revanth_anumula)
+    handle_normalized: { type: String },       // normalized for filtering (e.g. revanth_anumula)
     match_type: { type: String, enum: ['mention', 'text_match'] }
   }],
   // Is this grievance currently visible/active
@@ -386,6 +395,9 @@ grievanceSchema.index({ is_active: 1, platform: 1, workflow_status: 1, post_date
 grievanceSchema.index({ is_active: 1, grievance_source_id: 1, workflow_status: 1, post_date: -1, id: -1 });
 grievanceSchema.index({ is_active: 1, classification: 1, 'complaint.status': 1, post_date: -1 });
 grievanceSchema.index({ is_active: 1, tagged_account_normalized: 1, post_date: -1 });
+grievanceSchema.index({ 'linked_persons.handle_normalized': 1, post_date: -1 });
+grievanceSchema.index({ 'linked_persons.person_id': 1, post_date: -1 });
+grievanceSchema.index({ 'linked_persons.side': 1, 'analysis.sentiment': 1, post_date: -1 });
 grievanceSchema.index({ 'criticism.unique_code': 1 }, { sparse: true });
 grievanceSchema.index({ 'grievance_workflow.status': 1, post_date: -1 });
 grievanceSchema.index({ is_active: 1, 'grievance_workflow.status': 1, post_date: -1, id: -1 });

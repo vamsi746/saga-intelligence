@@ -1,106 +1,167 @@
-const OpenAI = require("openai");
-const axios = require("axios");
-const mappingService = require("./mappingService");
+const OpenAI = require('openai');
+const axios = require('axios');
+const mappingService = require('./mappingService');
+const {
+  OUR_PARTY,
+  OPPOSITION_PARTIES,
+  OUR_LEADERS,
+  OPPOSITION_LEADERS
+} = require('../config/politicalData');
 
 /**
- * Advanced Multi-Provider Categorization (V5.1)
- * Uses Local Ollama (llama3.1) as Primary for Unlimited Requests.
- * Uses GitHub Models (GPT-4o) as Reliability Fallback.
+ * LLM Classification Service (V7)
+ *
+ * Pure intent reasoner. Receives:
+ *   - the post text
+ *   - already-resolved persons (from personDetectionService)
+ *   - resolved location (from locationExtractionService)
+ *   - dynamic OUR / OPPOSITION leader lists from politicalData.js
+ *
+ * Returns a strict JSON contract: category, sentiment, target_party, stance,
+ * grievance_type, risk_score, risk_level, reasoning.
+ *
+ * Sentiment is decided by the **client-perspective decision matrix**:
+ *
+ *                    Praise/Support    Criticism/Attack
+ *   OUR side          positive          negative
+ *   OPPOSITION        negative          positive
+ *
+ * Plus discipline rules that prevent shallow/emoji-driven negativity.
  */
-async function categorizeText(text, retryCount = 1) {
-  const primaryProvider = process.env.PRIMARY_LLM_PROVIDER || 'ollama';
-  const currentProvider = (retryCount === 1) ? primaryProvider : 'github';
 
-  // 1. Ensure Mapping Data is loaded (avoid empty categorization lists)
-  await mappingService.waitForLoad();
+// ─────────────────────────────────────────────────────────
+// Prompt builders (dynamic — driven by politicalData.js)
+// ─────────────────────────────────────────────────────────
 
-  // 2. Resolve Provider Configuration
-  let config = {
-    apiKey: '',
-    baseURL: '',
-    model: ''
-  };
+const formatLeaderLine = (l) =>
+  `- ${l.name}${l.shortName && l.shortName !== l.name ? ` ("${l.shortName}")` : ''} — ${l.role}${l.constituency ? `, ${l.constituency}` : ''}`;
 
-  const { ALL_LEADERS } = require('../config/politicalData');
-  const targetGroupStr = ALL_LEADERS.map(l => `- ${l.name} (${l.role}, ${l.constituency})`).join('\n');
-  const targetHandlesStr = ALL_LEADERS.flatMap(l => l.handles || []).join(', ');
+const buildOurSideBlock = () => {
+  const lines = OUR_LEADERS.map(formatLeaderLine).join('\n');
+  return `OUR PARTY (CLIENT): ${OUR_PARTY.full_name} (${OUR_PARTY.name}) — ${OUR_PARTY.role} party in ${OUR_PARTY.state}.
+Chief: ${OUR_PARTY.chief}.
+Leaders (${OUR_LEADERS.length}):
+${lines}`;
+};
 
-  if (currentProvider === 'ollama') {
-    config.baseURL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-    config.model = process.env.OLLAMA_MODEL || "llama3.1";
-    config.apiKey = "ollama"; // Dummy key for OpenAI SDK compatibility
-  } else if (currentProvider === 'github') {
-    config.apiKey = process.env.GITHUB_TOKEN;
-    config.baseURL = "https://models.inference.ai.azure.com";
-    config.model = "gpt-4o";
-  }
+const buildOppositionBlock = () => {
+  const partyChunks = OPPOSITION_PARTIES.map((p) => {
+    const lines = p.leaders.map(formatLeaderLine).join('\n');
+    return `${p.name} (${p.full_name}):\n${lines}`;
+  }).join('\n\n');
+  return `OPPOSITION PARTIES (NOT our client):\n${partyChunks}`;
+};
 
-  // Early exit if missing primary config
-  if (currentProvider === 'github' && !config.apiKey) {
-    console.warn(`[LLM] No GITHUB_TOKEN found. Skipping fallback.`);
-    return null;
-  }
+const buildDetectedEntitiesBlock = (detectedPersons = [], detectedLocation = null) => {
+  const ours = detectedPersons.filter((p) => p.side === 'ours');
+  const opp = detectedPersons.filter((p) => p.side === 'opposition');
+  const oursStr = ours.length
+    ? ours.map((p) => `${p.name} (${p.role}, ${p.party})`).join('; ')
+    : '— none —';
+  const oppStr = opp.length
+    ? opp.map((p) => `${p.name} (${p.role}, ${p.party})`).join('; ')
+    : '— none —';
+  const locStr = detectedLocation
+    ? `${detectedLocation.city || ''}${detectedLocation.district ? `, ${detectedLocation.district}` : ''}`.trim()
+    : '— not detected —';
+  return `PRE-RESOLVED ENTITIES (already identified by deterministic detection — trust these):
+  • OUR side mentioned : ${oursStr}
+  • OPPOSITION mentioned: ${oppStr}
+  • Location           : ${locStr}`;
+};
 
-  // Dynamic Prompt Construction
+const buildPrompt = (text, ctx) => {
   const categories = mappingService.mappingData.category_mappings || [];
-  const categoryListStr = categories.map(c => `- ${c.category_id}`).join('\n');
-  const definitionsStr = categories.map(c => `
-- ${c.category_id}
-  ${c.definition || "No definition provided."}
-`).join('\n');
+  const categoryListStr = categories.map((c) => `- ${c.category_id}`).join('\n');
+  const definitionsStr = categories
+    .map((c) => `- ${c.category_id}: ${c.definition || 'No definition provided.'}`)
+    .join('\n');
 
-  const prompt = `
-You are an elite multilingual content moderation and political intelligence expert for the Telangana region. 
-You are working for the **INC (Congress) Party** led by **A. Revanth Reddy (Chief Minister)**.
-
-════════════════════════
-CLIENT PERSPECTIVE (CRITICAL)
-════════════════════════
-Our "PROTECTED GROUP" includes these leaders and their party:
-${targetGroupStr}
-Handles: ${targetHandlesStr}
-
-Our "OPPOSITION" includes: 
-1. BRS Party (KCR, KTR, Harish Rao).
-2. BJP Party (Narendra Modi, Amit Shah, Kishan Reddy, Bandi Sanjay).
-3. Any supporters or entities attacking the INC Government.
+  return `You are an elite political-intelligence and content-moderation analyst for ${OUR_PARTY.full_name} (${OUR_PARTY.name}) in ${OUR_PARTY.state}.
+Your CLIENT is the government led by ${OUR_PARTY.chief}.
+Your job is to classify a single post the way it matters to the CLIENT.
 
 ════════════════════════
-JOB 1: CONTENT MODERATION & CATEGORIZATION
+1. POLITICAL UNIVERSE (dynamic)
 ════════════════════════
-Select EXACTLY ONE moderation category:
+${buildOurSideBlock()}
+
+${buildOppositionBlock()}
+
+════════════════════════
+2. PRE-RESOLVED CONTEXT
+════════════════════════
+${buildDetectedEntitiesBlock(ctx.detectedPersons, ctx.detectedLocation)}
+
+You do NOT need to re-extract entities. They are already resolved above.
+Your only job is to decide the post's INTENT and STANCE toward those entities.
+
+════════════════════════
+3. SENTIMENT DECISION MATRIX (client perspective)
+════════════════════════
+Apply in this strict order:
+
+STEP 1 — Identify the SUBJECT:
+  (a) Is OUR side mentioned/implied?
+  (b) Is OPPOSITION mentioned/implied?
+  (c) Neither?
+
+STEP 2 — Identify the TONE toward that subject:
+  Support / Praise   |   Criticism / Attack   |   Neutral mention
+
+STEP 3 — Map to CLIENT BENEFIT:
+  ┌──────────────────┬────────────────┬────────────────────┐
+  │                  │ Support        │ Criticism / Attack │
+  ├──────────────────┼────────────────┼────────────────────┤
+  │ OUR side         │ positive       │ negative           │
+  │ OPPOSITION       │ negative       │ positive           │
+  │ Both (compare)   │ judge by primary subject of post    │
+  └──────────────────┴────────────────┴────────────────────┘
+
+STEP 4 — If NEITHER side is mentioned, apply the DISCIPLINE RULES below.
+
+════════════════════════
+4. DISCIPLINE RULES (anti-noise)
+════════════════════════
+These prevent shallow / emoji / venting posts from being mislabeled negative:
+
+D1. Sentiment is decided by SUBSTANCE, not emojis, exclamation marks,
+    or isolated negative words. A post with 😡😡 but no real complaint
+    is NEUTRAL, not negative.
+
+D2. Casual personal venting ("ugh", "hate Mondays", "feeling tired")
+    with no policy/civic/leader target → NEUTRAL.
+
+D3. Off-topic posts (memes, sports, weather, food, personal updates,
+    entertainment) → NEUTRAL, category "Normal".
+
+D4. A REAL civic grievance about ${OUR_PARTY.state} (water, roads, power,
+    law-and-order, public service failure) — even with no leader named —
+    → NEGATIVE (it reflects on the ruling party). Category "Public_Complaint".
+
+D5. A civic grievance about a NON-${OUR_PARTY.state} state → NEUTRAL for our dashboard.
+
+D6. Misinformation / fake news ABOUT our side → NEGATIVE.
+    Misinformation / fake news ABOUT opposition → POSITIVE only if it weakens
+    them; otherwise NEUTRAL. Flag in reasoning either way.
+
+D7. Threats, hate speech, communal incitement targeting our side or our
+    voter base → NEGATIVE with high risk_score (70+).
+
+════════════════════════
+5. CATEGORY (pick exactly one)
+════════════════════════
 ${categoryListStr}
 
 DEFINITIONS:
 ${definitionsStr}
 
 ════════════════════════
-SENTIMENT ANALYSIS LOGIC (STEP-BY-STEP)
+6. GRIEVANCE TOPIC (pick exactly one)
 ════════════════════════
-To determine sentiment, you MUST follow this 3-step internal logic:
-
-STEP 1: Identify the "TARGET" of the post.
-- Who is being criticized or praised? 
-- Is it OUR GROUP (INC/Revanth Reddy) or the OPPOSITION (BRS/BJP/KCR/Modi)?
-
-STEP 2: Identify the "STANCE".
-- Is the content Support/Praise or Criticism/Attack/Sarcasm/Exposing Scams?
-
-STEP 3: Map to Client Sentiment.
-- [Target: OUR GROUP] + [Stance: Support] = **positive**
-- [Target: OUR GROUP] + [Stance: Criticism] = **negative**
-- [Target: OPPOSITION] + [Stance: Support] = **negative** (Bad for us)
-- [Target: OPPOSITION] + [Stance: Criticism/Sarcasm] = **positive** (Good for us)
-
-*NOTE*: If the post is a general civic complaint (Roads, Water, etc.) with no party mentioned, use standard sentiment (Complaint = Negative).
-
-════════════════════════
-JOB 3: GRIEVANCE TOPIC
-════════════════════════
-ALLOWED TOPICS:
-- Political Criticism (Attacking us or opposition)
+- Political Criticism
 - Hate Speech
-- Public Complaint (Civic issues)
+- Public Complaint
 - Corruption Complaint
 - Government Praise
 - Traffic Complaint
@@ -110,25 +171,52 @@ ALLOWED TOPICS:
 - Normal
 
 ════════════════════════
-JOB 4: RISK SCORING (0-100)
+7. RISK SCORE (0–100)
 ════════════════════════
-- 0-15: Harmless / Supportive / Attacking Opposition.
-- 16-39: Mild civic complaints.
-- 40-69: Strong attacks on our leaders, disinformation, or communal tension.
-- 70-100: Direct threats to our leaders, incitement to violence, or massive protests against us.
+0–15   : Harmless, supportive, attacking opposition, off-topic
+16–39  : Mild civic complaints, low-engagement criticism
+40–69  : Strong attacks on our leaders, disinformation, communal tension
+70–100 : Direct threats to our leaders, incitement to violence, mass mobilization against us
 
 ════════════════════════
-OUTPUT FORMAT (STRICT JSON ONLY):
+8. WORKED EXAMPLES
+════════════════════════
+EX1 "Great work by Revanth Reddy on Rythu Bharosa 👏"
+   → OUR side, Support → positive, Normal, Government Praise, score 5
+
+EX2 "KTR exposed in irrigation scam. BRS regime looted 500cr."
+   → OPPOSITION, Criticism → positive, Misinformation, Political Criticism, score 10
+
+EX3 "Modi's Kashi work is amazing, India is lucky"
+   → OPPOSITION, Support → negative, Normal, Political Criticism, score 35
+
+EX4 "Ugh Mondays 😡😡😡"
+   → Neither, no substance → neutral, Normal, Normal, score 0
+
+EX5 "No water in Gachibowli for 3 days, what is the govt doing"
+   → Neither named, real civic grievance in Telangana → negative, Public_Complaint, Public Complaint, score 45
+
+EX6 "@revanth_anumula thank you sir for the women's free bus scheme 🙏"
+   → OUR side handle, Support → positive, Normal, Government Praise, score 3
+
+EX7 "RCB will win IPL this year 🔥"
+   → Off-topic sports → neutral, Normal, Normal, score 0
+
+EX8 "Revanth Reddy is destroying Telangana, worst CM ever"
+   → OUR side, Criticism → negative, Political_Attack, Political Criticism, score 55
+
+════════════════════════
+9. STRICT JSON OUTPUT (no markdown, no prose)
 ════════════════════════
 {
-  "category": "<moderation_category_ID>",
+  "category": "<category_id>",
   "target_party": "OUR_GROUP | OPPOSITION | NEUTRAL",
   "stance": "Support | Criticism | Neutral",
-  "reasoning": "<Step-by-step logic used for sentiment analysis>",
+  "reasoning": "<short step-by-step: subject -> tone -> client benefit>",
   "grievance_type": "<one of the allowed topics>",
-  "grievance_reasoning": "<1-line summary>",
+  "grievance_reasoning": "<one line>",
   "sentiment": "positive | negative | neutral",
-  "risk_score": <integer>,
+  "risk_score": <integer 0-100>,
   "risk_level": "low | medium | high"
 }
 
@@ -138,119 +226,187 @@ TEXT TO ANALYZE:
 ${text}
 >>>
 `;
+};
 
-  try {
-    let result;
+// ─────────────────────────────────────────────────────────
+// Output validation
+// ─────────────────────────────────────────────────────────
 
-    if (currentProvider === 'ollama') {
-      // Use direct axios for Ollama as it's often more reliable for local setup than SDK
-      const response = await axios.post(`${config.baseURL}/api/chat`, {
-        model: config.model,
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        format: "json",
-        options: {
-          temperature: 0
-        }
-      }, { timeout: 120000 });
+const ALLOWED_TOPICS = [
+  'Political Criticism', 'Hate Speech', 'Public Complaint', 'Corruption Complaint',
+  'Government Praise', 'Traffic Complaint', 'Public Nuisance', 'Road & Infrastructure',
+  'Law & Order', 'Normal'
+];
+const ALLOWED_SENTIMENTS = ['positive', 'negative', 'neutral'];
+const ALLOWED_RISK_LEVELS = ['low', 'medium', 'high'];
+const ALLOWED_TARGETS = ['OUR_GROUP', 'OPPOSITION', 'NEUTRAL'];
+const ALLOWED_STANCES = ['Support', 'Criticism', 'Neutral'];
 
-      const content = response.data?.message?.content;
-      console.log(`[LLM] RAW RESPONSE: ${content}`);
-      result = JSON.parse(content);
-    } else {
-      // Use OpenAI SDK for GitHub
-      const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
-      const response = await client.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        model: config.model,
-        response_format: { type: "json_object" },
-        temperature: 0
-      });
-      result = JSON.parse(response.choices[0].message.content);
-    }
+/**
+ * Deterministic sentiment derivation from (target_party, stance).
+ *
+ * The LLM is good at extracting structured fields like "who is this about"
+ * and "what tone is being used", but inconsistent at applying the client-
+ * perspective inversion. So we let the LLM extract target+stance, and we
+ * compute sentiment from the matrix:
+ *
+ *                    Support     Criticism    Neutral
+ *   OUR_GROUP        positive    negative     neutral
+ *   OPPOSITION       negative    positive     neutral
+ *   NEUTRAL          → fall back to LLM's sentiment (discipline rules apply)
+ *
+ * Returns { sentiment, derived } — derived=true when the matrix overrode
+ * the LLM's raw sentiment. Logged so we can monitor drift.
+ */
+const deriveSentiment = (target, stance, llmSentiment) => {
+  if (target === 'OUR_GROUP') {
+    if (stance === 'Support')   return { sentiment: 'positive', derived: true };
+    if (stance === 'Criticism') return { sentiment: 'negative', derived: true };
+    return { sentiment: 'neutral', derived: true };
+  }
+  if (target === 'OPPOSITION') {
+    if (stance === 'Support')   return { sentiment: 'negative', derived: true };
+    if (stance === 'Criticism') return { sentiment: 'positive', derived: true };
+    return { sentiment: 'neutral', derived: true };
+  }
+  // NEUTRAL target → trust LLM (discipline rules already applied in prompt)
+  return { sentiment: llmSentiment, derived: false };
+};
 
-    // --- CATEGORY VALIDATION ---
-    const availableCategories = (mappingService.mappingData.category_mappings || []).map(c => c.category_id);
-    let finalCategory = result.category;
+const validateResult = (raw) => {
+  const availableCategories = (mappingService.mappingData.category_mappings || [])
+    .map((c) => c.category_id);
 
-    console.log(`[LLM] Raw Category: "${finalCategory}"`);
+  let category = raw.category;
+  if (!availableCategories.includes(category)) {
+    const ci = availableCategories.find(
+      (c) => String(c).trim().toLowerCase() === String(category).trim().toLowerCase()
+    );
+    category = ci || 'Normal';
+  }
 
-    if (!availableCategories.includes(finalCategory)) {
-      // Try strict case-insensitive match (trim + case)
-      const exactMatch = availableCategories.find(c =>
-        String(c).trim().toLowerCase() === String(finalCategory).trim().toLowerCase()
-      );
+  let topic = raw.grievance_type || 'Normal';
+  if (!ALLOWED_TOPICS.includes(topic)) {
+    const ci = ALLOWED_TOPICS.find((t) => t.toLowerCase() === String(topic).trim().toLowerCase());
+    topic = ci || 'Normal';
+  }
 
-      if (exactMatch) {
-        finalCategory = exactMatch;
-      } else {
-        console.warn(`[LLM] INVALID CATEGORY: "${finalCategory}". Fallback to 'Normal'.`);
-        finalCategory = 'Normal';
-      }
-    }
+  let llmSentiment = String(raw.sentiment || 'neutral').toLowerCase();
+  if (!ALLOWED_SENTIMENTS.includes(llmSentiment)) llmSentiment = 'neutral';
 
-    // --- GRIEVANCE TOPIC VALIDATION ---
-    const ALLOWED_TOPICS = [
-      'Political Criticism', 'Hate Speech', 'Public Complaint', 'Corruption Complaint',
-      'Government Praise', 'Traffic Complaint', 'Public Nuisance', 'Road & Infrastructure',
-      'Law & Order', 'Normal'
-    ];
-    let finalTopic = result.grievance_type || 'Normal';
-    if (!ALLOWED_TOPICS.includes(finalTopic)) {
-      const topicMatch = ALLOWED_TOPICS.find(t => t.toLowerCase() === String(finalTopic).trim().toLowerCase());
-      if (topicMatch) {
-        finalTopic = topicMatch;
-      } else {
-        console.warn(`[LLM] INVALID TOPIC: "${finalTopic}". Fallback to 'Normal'.`);
-        finalTopic = 'Normal';
-      }
-    }
+  let target = String(raw.target_party || 'NEUTRAL').toUpperCase();
+  if (!ALLOWED_TARGETS.includes(target)) target = 'NEUTRAL';
 
-    // --- SENTIMENT VALIDATION ---
-    const ALLOWED_SENTIMENTS = ['positive', 'negative', 'neutral'];
-    let finalSentiment = result.sentiment || 'neutral';
-    if (!ALLOWED_SENTIMENTS.includes(finalSentiment)) {
-      finalSentiment = 'neutral';
-    }
+  let stance = raw.stance ? String(raw.stance).charAt(0).toUpperCase() + String(raw.stance).slice(1).toLowerCase() : 'Neutral';
+  if (!ALLOWED_STANCES.includes(stance)) stance = 'Neutral';
 
-    // --- RISK SCORE VALIDATION ---
-    let finalRiskScore = parseInt(result.risk_score, 10);
-    if (isNaN(finalRiskScore) || finalRiskScore < 0) finalRiskScore = 0;
-    if (finalRiskScore > 100) finalRiskScore = 100;
+  // Derive sentiment from the structured (target, stance) — LLM-given sentiment
+  // is only used as fallback when target is NEUTRAL.
+  const { sentiment, derived } = deriveSentiment(target, stance, llmSentiment);
+  if (derived && sentiment !== llmSentiment) {
+    console.log(`[LLM] sentiment overridden by matrix: target=${target} stance=${stance} → ${sentiment} (LLM said ${llmSentiment})`);
+  }
 
-    const ALLOWED_RISK_LEVELS = ['low', 'medium', 'high'];
-    let finalRiskLevel = (result.risk_level || 'low').toLowerCase();
-    // Map 'critical' to 'high' if LLM still returns it
-    if (finalRiskLevel === 'critical') finalRiskLevel = 'high';
-    if (!ALLOWED_RISK_LEVELS.includes(finalRiskLevel)) {
-      // Derive from score if LLM gave invalid level
-      if (finalRiskScore >= 70) finalRiskLevel = 'high';
-      else if (finalRiskScore >= 40) finalRiskLevel = 'medium';
-      else finalRiskLevel = 'low';
-    }
+  let riskScore = parseInt(raw.risk_score, 10);
+  if (isNaN(riskScore) || riskScore < 0) riskScore = 0;
+  if (riskScore > 100) riskScore = 100;
 
-    return {
-      category: finalCategory,
-      target_party: result.target_party || 'NEUTRAL',
-      stance: result.stance || 'Neutral',
-      reasoning: result.reasoning || "",
-      grievance_type: finalTopic,
-      grievance_reasoning: result.grievance_reasoning || "",
-      sentiment: finalSentiment,
-      risk_score: finalRiskScore,
-      risk_level: finalRiskLevel
-    };
-  } catch (err) {
-    console.error(`[LLM] [${currentProvider}] Analysis Failed:`, err.message);
+  let riskLevel = String(raw.risk_level || 'low').toLowerCase();
+  if (riskLevel === 'critical') riskLevel = 'high';
+  if (!ALLOWED_RISK_LEVELS.includes(riskLevel)) {
+    if (riskScore >= 70) riskLevel = 'high';
+    else if (riskScore >= 40) riskLevel = 'medium';
+    else riskLevel = 'low';
+  }
 
-    // Automatic Fallback to GitHub on first error
-    if (currentProvider === 'ollama' && retryCount > 0) {
-      console.log("[LLM] Local Ollama unavailable. Falling back to GitHub Models...");
-      return categorizeText(text, retryCount - 1);
-    }
+  return {
+    category,
+    target_party: target,
+    stance,
+    reasoning: raw.reasoning || '',
+    grievance_type: topic,
+    grievance_reasoning: raw.grievance_reasoning || '',
+    sentiment,
+    risk_score: riskScore,
+    risk_level: riskLevel
+  };
+};
 
+// ─────────────────────────────────────────────────────────
+// Provider routing (Ollama primary → GitHub Models fallback)
+// ─────────────────────────────────────────────────────────
+
+const callOllama = async (prompt) => {
+  const baseURL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+  const model = process.env.OLLAMA_MODEL || 'llama3.1';
+  const response = await axios.post(
+    `${baseURL}/api/chat`,
+    {
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+      format: 'json',
+      options: { temperature: 0 }
+    },
+    { timeout: 120000 }
+  );
+  const content = response.data?.message?.content;
+  console.log(`[LLM][ollama] RAW: ${content}`);
+  return JSON.parse(content);
+};
+
+const callGithub = async (prompt) => {
+  const apiKey = process.env.GITHUB_TOKEN;
+  if (!apiKey) {
+    console.warn('[LLM][github] GITHUB_TOKEN missing — cannot fallback');
     return null;
   }
+  const client = new OpenAI({ apiKey, baseURL: 'https://models.inference.ai.azure.com' });
+  const response = await client.chat.completions.create({
+    messages: [{ role: 'user', content: prompt }],
+    model: 'gpt-4o',
+    response_format: { type: 'json_object' },
+    temperature: 0
+  });
+  return JSON.parse(response.choices[0].message.content);
+};
+
+/**
+ * Classify a post.
+ * @param {string} text
+ * @param {object} [ctx]
+ *   - detectedPersons: Array (from personDetectionService)
+ *   - detectedLocation: object|null (from locationExtractionService)
+ */
+async function categorizeText(text, ctx = {}) {
+  await mappingService.waitForLoad();
+
+  const prompt = buildPrompt(text, {
+    detectedPersons: ctx.detectedPersons || [],
+    detectedLocation: ctx.detectedLocation || null
+  });
+
+  const primary = process.env.PRIMARY_LLM_PROVIDER || 'ollama';
+
+  // Try primary
+  try {
+    const raw = primary === 'ollama' ? await callOllama(prompt) : await callGithub(prompt);
+    if (raw) return validateResult(raw);
+  } catch (err) {
+    console.error(`[LLM][${primary}] failed: ${err.message}`);
+  }
+
+  // Try fallback (only if different from primary)
+  const fallback = primary === 'ollama' ? 'github' : 'ollama';
+  try {
+    console.log(`[LLM] Falling back to ${fallback}`);
+    const raw = fallback === 'ollama' ? await callOllama(prompt) : await callGithub(prompt);
+    if (raw) return validateResult(raw);
+  } catch (err) {
+    console.error(`[LLM][${fallback}] also failed: ${err.message}`);
+  }
+
+  return null;
 }
 
 module.exports = {

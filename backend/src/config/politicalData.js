@@ -1,9 +1,46 @@
 /**
- * Political Data for Person Detection (Telangana)
- * This data is used by the personDetectionService to map grievances to leaders.
+ * Political Data — Single source of truth for all party / leader information.
+ *
+ * Used by:
+ *   - personDetectionService  (entity resolution by name/handle)
+ *   - llmService               (dynamic prompt context: OUR + OPPOSITION)
+ *   - grievanceController      (handle-based filtering across tagged + identified leaders)
+ *
+ * Adding/removing a leader anywhere in this file automatically flows through
+ * detection, LLM prompting, storage, and UI filters — no other file needs editing.
  */
 
-const CABINET_MINISTERS = [
+const normalizeHandle = (h) =>
+  String(h || '').trim().replace(/^@/, '').toLowerCase();
+
+const tagLeaders = (leaders, party, side) =>
+  leaders.map((l) => {
+    const handles = l.handles || [];
+    const primary_handle = handles[0] || '';
+    return {
+      ...l,
+      party,
+      side, // 'ours' | 'opposition'
+      primary_handle,
+      primary_handle_normalized: normalizeHandle(primary_handle),
+      handles_normalized: handles.map(normalizeHandle).filter(Boolean)
+    };
+  });
+
+// ─────────────────────────────────────────────────────────
+// OUR PARTY (Client) — INC, ruling party in Telangana
+// ─────────────────────────────────────────────────────────
+const OUR_PARTY = {
+  id: 'inc',
+  name: 'INC',
+  full_name: 'Indian National Congress',
+  alliance: 'INDIA',
+  role: 'ruling',
+  state: 'Telangana',
+  chief: 'A. Revanth Reddy'
+};
+
+const _CABINET_RAW = [
   { id: 'revanth-reddy', name: 'A. Revanth Reddy', shortName: 'Revanth Reddy', role: 'Chief Minister', constituency: 'Kodangal', district: 'Vikarabad', handles: ['@revanth_anumula', '@TelanganaCMO'] },
   { id: 'bhatti-vikramarka', name: 'Mallu Bhatti Vikramarka', shortName: 'Bhatti Vikramarka', role: 'Deputy Chief Minister', constituency: 'Madhira', district: 'Khammam', handles: ['@Bhatti_Vikramarka'] },
   { id: 'sridhar-babu', name: 'D. Sridhar Babu', shortName: 'Sridhar Babu', role: 'Cabinet Minister', constituency: 'Manthani', district: 'Peddapalli', handles: ['@dudilla_sridhar'] },
@@ -23,7 +60,7 @@ const CABINET_MINISTERS = [
   { id: 'chamakura', name: 'Chamakura Malla Reddy', shortName: 'Malla Reddy', role: 'Cabinet Minister', constituency: 'Medchal', district: 'Medchal-Malkajgiri', handles: ['@MallaReddyBrs'] }
 ];
 
-const CONGRESS_MLAS = [
+const _CONGRESS_MLAS_RAW = [
   { id: 'vamshi-krishna-achampet', name: 'Chikkudu Vamshi Krishna', shortName: 'Vamshi Krishna', role: 'MLA', constituency: 'Achampet', district: 'Nagarkurnool', handles: [] },
   { id: 'ilaiah-beerla', name: 'Ilaiah Beerla', shortName: 'Ilaiah Beerla', role: 'MLA', constituency: 'Alair', district: 'Yadadri', handles: [] },
   { id: 'adinarayana-jare', name: 'Adinarayana Jare', shortName: 'Adinarayana Jare', role: 'MLA', constituency: 'Aswaraopeta', district: 'Bhadradri Kothagudem', handles: [] },
@@ -77,10 +114,56 @@ const CONGRESS_MLAS = [
   { id: 'kanakaiah-yellandu', name: 'Koram Kanakaiah', shortName: 'Koram Kanakaiah', role: 'MLA', constituency: 'Yellandu', district: 'Bhadradri Kothagudem', handles: [] }
 ];
 
-const ALL_LEADERS = [...CABINET_MINISTERS, ...CONGRESS_MLAS];
+const CABINET_MINISTERS = tagLeaders(_CABINET_RAW, 'INC', 'ours');
+const CONGRESS_MLAS = tagLeaders(_CONGRESS_MLAS_RAW, 'INC', 'ours');
+const OUR_LEADERS = [...CABINET_MINISTERS, ...CONGRESS_MLAS];
+
+// ─────────────────────────────────────────────────────────
+// OPPOSITION PARTIES — extend freely, downstream auto-adapts
+// ─────────────────────────────────────────────────────────
+const _BRS_LEADERS_RAW = [
+  { id: 'kcr', name: 'K. Chandrashekar Rao', shortName: 'KCR', aliases: ['KCR', 'Chandrashekar Rao'], role: 'Former CM / BRS Chief', constituency: 'Gajwel', district: 'Siddipet', handles: ['@KCRTalksToYou'] },
+  { id: 'ktr', name: 'K. T. Rama Rao', shortName: 'KTR', aliases: ['KTR', 'Rama Rao'], role: 'BRS Working President', constituency: 'Sircilla', district: 'Rajanna Sircilla', handles: ['@KTRBRS'] },
+  { id: 'harish-rao', name: 'T. Harish Rao', shortName: 'Harish Rao', aliases: ['Harish Rao'], role: 'BRS Senior Leader', constituency: 'Siddipet', district: 'Siddipet', handles: ['@BRSHarish'] },
+  { id: 'kavitha', name: 'K. Kavitha', shortName: 'Kavitha', aliases: ['K Kavitha'], role: 'MLC', constituency: 'Nizamabad', district: 'Nizamabad', handles: ['@RaoKavitha'] }
+];
+
+const _BJP_LEADERS_RAW = [
+  { id: 'modi', name: 'Narendra Modi', shortName: 'Modi', role: 'Prime Minister', constituency: 'Varanasi', district: 'Varanasi', handles: ['@narendramodi'] },
+  { id: 'amit-shah', name: 'Amit Shah', shortName: 'Amit Shah', role: 'Union Home Minister', constituency: 'Gandhinagar', district: 'Gandhinagar', handles: ['@AmitShah'] },
+  { id: 'kishan-reddy', name: 'G. Kishan Reddy', shortName: 'Kishan Reddy', role: 'Union Minister / TG BJP Chief', constituency: 'Secunderabad', district: 'Hyderabad', handles: ['@kishanreddybjp'] },
+  { id: 'bandi-sanjay', name: 'Bandi Sanjay Kumar', shortName: 'Bandi Sanjay', role: 'Union MoS Home', constituency: 'Karimnagar', district: 'Karimnagar', handles: ['@bandisanjay_bjp'] },
+  { id: 'eatala-rajender', name: 'Eatala Rajender', shortName: 'Eatala', role: 'BJP Leader', constituency: 'Malkajgiri', district: 'Medchal-Malkajgiri', handles: ['@Eatala_Rajender'] }
+];
+
+const _AIMIM_LEADERS_RAW = [
+  { id: 'asaduddin-owaisi', name: 'Asaduddin Owaisi', shortName: 'Owaisi', role: 'AIMIM President / MP', constituency: 'Hyderabad', district: 'Hyderabad', handles: ['@asadowaisi'] },
+  { id: 'akbaruddin-owaisi', name: 'Akbaruddin Owaisi', shortName: 'Akbaruddin', role: 'AIMIM Floor Leader / MLA', constituency: 'Chandrayangutta', district: 'Hyderabad', handles: [] }
+];
+
+const OPPOSITION_PARTIES = [
+  { id: 'brs', name: 'BRS', full_name: 'Bharat Rashtra Samithi', alliance: 'BRS', leaders: tagLeaders(_BRS_LEADERS_RAW, 'BRS', 'opposition') },
+  { id: 'bjp', name: 'BJP', full_name: 'Bharatiya Janata Party', alliance: 'NDA', leaders: tagLeaders(_BJP_LEADERS_RAW, 'BJP', 'opposition') },
+  { id: 'aimim', name: 'AIMIM', full_name: 'All India Majlis-e-Ittehadul Muslimeen', alliance: 'AIMIM', leaders: tagLeaders(_AIMIM_LEADERS_RAW, 'AIMIM', 'opposition') }
+];
+
+const OPPOSITION_LEADERS = OPPOSITION_PARTIES.flatMap((p) => p.leaders);
+
+// ─────────────────────────────────────────────────────────
+// UNIFIED LIST — used by personDetectionService
+// ─────────────────────────────────────────────────────────
+const ALL_LEADERS = [...OUR_LEADERS, ...OPPOSITION_LEADERS];
 
 module.exports = {
+  // Meta
+  OUR_PARTY,
+  OPPOSITION_PARTIES,
+  // Tagged collections
   CABINET_MINISTERS,
   CONGRESS_MLAS,
-  ALL_LEADERS
+  OUR_LEADERS,
+  OPPOSITION_LEADERS,
+  ALL_LEADERS,
+  // Helpers
+  normalizeHandle
 };

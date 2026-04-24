@@ -2,57 +2,52 @@ require('dotenv').config();
 const axios = require('axios');
 const { categorizeText } = require('./llmService');
 const mappingService = require('./mappingService');
-const LegalSection = require('../models/LegalSection');
-const PlatformPolicy = require('../models/PlatformPolicy');
+const personDetectionService = require('./personDetectionService');
+const locationExtractionService = require('./locationExtractionService');
 
 /**
- * Advanced Dual-Pass AI Analysis (V5.1)
- * Pass A: Multi-Provider LLM (Ollama/GitHub) for Intent & Categorization
- * Pass B: Local Fine-Tuned Model for Legal & Policy Mapping
- * Replaces legacy Toxicity and Distilbert models.
- * Pass D: Standalone Deepfake Forensics (S3-First, Async)
+ * Analysis Pipeline (V7 — Dynamic, Person-First)
+ *
+ *   Pass A — Person Detection      (deterministic, parallel with B)
+ *   Pass B — Location Extraction   (deterministic, parallel with A)
+ *   Pass C — LLM Classification    (receives A+B as structured context)
+ *   Pass D — Mapping Engine        (legal sections + platform policies from category)
+ *   Pass E — Forensics             (separate, async, optional)
+ *
+ * Sentiment is decided entirely by the LLM (perspective-aware) and passed
+ * through unchanged to the grievance record.
  */
 
-/**
- * //
- * Global lock to ensure forensic analyses are processed strictly one-by-one.
- */
+// Forensics queue — strictly serial to avoid GPU contention
 let forensicLock = Promise.resolve();
 
 const triggerForensicAnalysis = async (content, analysisId) => {
   const log = (msg) => console.log(`[ForensicLock] ${msg}`);
   const mlServiceUrl = process.env.DEEPFAKE_ML_URL || 'http://localhost:8001';
 
-  // Entry into sequential queue
   return forensicLock = forensicLock.then(async () => {
     try {
       log(`Acquired lock for Analysis: ${analysisId}`);
       let mediaItems = content.media || [];
 
-      // Fallback: If no media items but platform is YouTube/Facebook, use content_url
       if (mediaItems.length === 0 && (content.platform === 'youtube' || content.platform === 'facebook')) {
         const url = content.content_url || content.url;
-        if (url) {
-          mediaItems = [{ url, type: 'video' }];
-        }
+        if (url) mediaItems = [{ url, type: 'video' }];
       }
 
       if (mediaItems.length === 0) return null;
 
-      // Prioritize S3 URLs if archived, fallback to platform URL
       const payload = {
-        media_items: mediaItems.map(m => ({
+        media_items: mediaItems.map((m) => ({
           url: m.s3_url || m.video_url || m.url,
           type: m.type === 'video' ? 'video' : 'image'
         }))
       };
 
       log(`Triggering batch forensics for ${payload.media_items.length} items (Analysis: ${analysisId})`);
-
       const response = await axios.post(`${mlServiceUrl}/detect/batch`, payload, { timeout: 300000 });
       log(`Forensics Complete for ${analysisId}`);
       return response.data.results || null;
-
     } catch (err) {
       log(`Forensics Failed for ${analysisId}: ${err.message}`);
       return null;
@@ -62,210 +57,142 @@ const triggerForensicAnalysis = async (content, analysisId) => {
   });
 };
 
+const emptyResult = (msg) => ({
+  risk_level: 'low',
+  risk_score: 0,
+  explanation: msg,
+  violated_policies: [],
+  legal_sections: [],
+  triggered_keywords: [],
+  linked_persons: [],
+  detected_location: null
+});
+
 const analyzeContent = async (text, options = {}) => {
   const log = (msg) => console.log(`[AnalysisService] ${msg}`);
 
   if (!text || !text.trim()) {
-    return {
-      risk_level: 'low',
-      risk_score: 0,
-      explanation: 'No text provided.',
-      violated_policies: [],
-      legal_sections: [],
-      triggered_keywords: []
-    };
+    return emptyResult('No text provided.');
   }
 
   try {
-    log(`Starting Dual-Pass analysis for: "${text.substring(0, 50)}..."`);
+    log(`Starting analysis: "${text.substring(0, 60)}..."`);
 
-    // --- PASS A: LLM INTENT ANALYSIS ---
-    log("Running Pass A (Primary AI Content Understanding)...");
-    let llmResult = await categorizeText(text);
+    // ─── Pass A + B in parallel (both deterministic, no AI) ───────────────
+    log('Pass A+B: Person Detection + Location Extraction (parallel)');
+    const [linkedPersons, detectedLocation] = await Promise.all([
+      personDetectionService.detectPersons(text, {
+        mentions: options.mentions || [],
+        hashtags: options.hashtags || [],
+        taggedAccount: options.taggedAccount || null,
+        authorHandle: options.postedBy?.handle || null
+      }),
+      locationExtractionService.extractLocation(text, options.postedBy || {})
+    ]);
+    log(`  → Persons: ${linkedPersons.length} (ours=${linkedPersons.filter(p => p.side === 'ours').length}, opp=${linkedPersons.filter(p => p.side === 'opposition').length})`);
+    log(`  → Location: ${detectedLocation ? detectedLocation.city : 'not found'}`);
+
+    // ─── Pass C: LLM with resolved entities as context ────────────────────
+    log('Pass C: LLM Classification (perspective-aware)');
+    let llmResult = await categorizeText(text, {
+      detectedPersons: linkedPersons,
+      detectedLocation
+    });
 
     if (!llmResult) {
-      log("Pass A failed. Using fallback categorization (Normal).");
+      log('  → LLM unavailable; defaulting to Normal/neutral');
       llmResult = {
         category: 'Normal',
-        reasoning: 'Primary AI analysis unavailable. Defaulting to Normal category.'
+        target_party: 'NEUTRAL',
+        stance: 'Neutral',
+        reasoning: 'LLM unavailable.',
+        grievance_type: 'Normal',
+        grievance_reasoning: '',
+        sentiment: 'neutral',
+        risk_score: 0,
+        risk_level: 'low'
       };
     }
+    log(`  → Sentiment: ${llmResult.sentiment} | Category: ${llmResult.category} | Risk: ${llmResult.risk_level}(${llmResult.risk_score})`);
 
-    // --- PASS B: DETERMINISTIC MAPPING ENGINE ---
-    // --- PASS B: DETERMINISTIC MAPPING ENGINE ---
-    log("Running Pass B (Deterministic Mapping Engine)...");
-
-    // Check against ALL platforms for comprehensive policy analysis
-    const supportedPlatforms = ['x', 'youtube', 'facebook', 'instagram'];
+    // ─── Pass D: Deterministic mapping (legal/policy) ─────────────────────
+    log('Pass D: Mapping Engine (legal + platform policies across all platforms)');
+    const platforms = ['x', 'youtube', 'facebook', 'instagram'];
     let allViolatedPolicies = [];
-    let aggregatedLegalSections = []; // Should be same across platforms for same country
+    let aggregatedLegalSections = [];
     let aggregatedKeywords = [];
 
-    // We run mapping for all platforms to show "Cyber Simulation" results
-    supportedPlatforms.forEach(p => {
-      const result = mappingService.resolveMapping(
+    platforms.forEach((p) => {
+      const r = mappingService.resolveMapping(
         llmResult.category,
         text,
         p,
         options.country || 'IN'
       );
-      if (result.platform_policies && result.platform_policies.length > 0) {
-        allViolatedPolicies.push(...result.platform_policies);
-      }
-      // Capture legal/keywords from the first valid run (they don't depend on platform)
-      if (aggregatedLegalSections.length === 0) aggregatedLegalSections = result.legal_sections || [];
-      if (aggregatedKeywords.length === 0) aggregatedKeywords = result.triggered_keywords || [];
+      if (r.platform_policies?.length) allViolatedPolicies.push(...r.platform_policies);
+      if (!aggregatedLegalSections.length) aggregatedLegalSections = r.legal_sections || [];
+      if (!aggregatedKeywords.length) aggregatedKeywords = r.triggered_keywords || [];
     });
 
-    const mappingResult = {
-      legal_sections: aggregatedLegalSections,
-      platform_policies: allViolatedPolicies,
-      triggered_keywords: aggregatedKeywords
-    };
-
-    // --- PASS C: RISK SCORING (Now handled by LLM in Pass A) ---
-    // Risk score and level come directly from the LLM instead of ML service.
-    log("Pass C skipped — using LLM risk scoring from Pass A.");
-    let finalRiskLevel = llmResult.risk_level || 'low';
-    let finalRiskScore = llmResult.risk_score || 0;
-    log(`LLM Risk Scoring: ${finalRiskLevel.toUpperCase()} (${finalRiskScore}%)`);
-
-    // --- PASS C ORIGINAL (ML Risk Scoring via port 8006) - COMMENTED OUT ---
-    // log("Running Pass C (Risk Scoring ML Model)...");
-    // let finalRiskLevel = 'low';
-    // let finalRiskScore = 0;
-    //
-    // const mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:8006';
-    //
-    // try {
-    //   const riskResponse = await axios.post(`${mlServiceUrl}/score-risk`, {
-    //     text: text,
-    //     category: llmResult.category,
-    //     legal_sections: mappingResult.legal_sections.map(s => s.section)
-    //   });
-    //
-    //   const riskData = riskResponse.data;
-    //
-    //   // Pass C (ML) is the "Final Word" on physical risk scoring
-    //   finalRiskLevel = riskData.risk.toLowerCase();
-    //   finalRiskScore = Math.round(riskData.confidence * 100);
-    //
-    //   log(`Risk Scoring Complete: ${finalRiskLevel.toUpperCase()} (${finalRiskScore}%) [Method: ${riskData.method}]`);
-    //
-    // } catch (error) {
-    //   log(`Pass C (Risk Service) failed: ${error.message}.`);
-    //
-    //   // Fallback: If ML is down, use a heuristic based on LLM category
-    //   const highRiskCategories = ['Violence', 'Hate_Speech', 'Sexual_Violence', 'Threat'];
-    //   if (highRiskCategories.includes(llmResult.category)) {
-    //     finalRiskLevel = 'high';
-    //     finalRiskScore = 85;
-    //     log(`ML Service Down. Fallback to HIGH risk based on LLM category: ${llmResult.category}`);
-    //   } else {
-    //     finalRiskLevel = 'low';
-    //     finalRiskScore = 15;
-    //   }
-    // }
-
-    // --- CONTEXT-AWARE SENTIMENT OVERRIDE ---
-    let finalSentiment = llmResult.sentiment || 'neutral';
-    const currentCategory = llmResult.category;
-
-    // Enforce logical sentiment bounds based on category context
-    if (['Government Praise'].includes(currentCategory)) {
-      finalSentiment = 'positive';
-    } else if (['Normal', 'Query', 'Suggestion'].includes(currentCategory)) {
-      // If LLM says "Normal" but marked it negative, pull it back to neutral
-      if (finalSentiment === 'negative') finalSentiment = 'neutral';
-    } else if (currentCategory && currentCategory !== 'Normal') {
-      // For all actual grievance categories (Traffic, Violence, Hate Speech, etc.), it's fundamentally a negative event/complaint.
-      // EXCEPTION: If it's positive because it's attacking the OPPOSITION, keep it positive.
-      const isOppositionTarget = String(llmResult.target_party || '').includes('OPPOSITION');
-      if (finalSentiment === 'positive' && !isOppositionTarget) {
-        finalSentiment = 'negative';
-      }
-    }
-
-    // --- PASS C: LOCATION EXTRACTION (V6.5) ---
-    log("Running Pass C (Location Extraction)...");
-    const locationExtractionService = require('./locationExtractionService');
-    const detectedLocation = await locationExtractionService.extractLocation(text, options.postedBy || {});
-    log(`Location Extraction Complete: ${detectedLocation ? detectedLocation.city : 'Not found'}`);
-
-    // --- PASS B.1: PERSON DETECTION (NEW) ---
-    log("Running Pass B.1 (Person Detection)...");
-    const personDetectionService = require('./personDetectionService');
-    const linkedPersons = await personDetectionService.detectPersons(text, {
-        mentions: options.mentions || [], // Extract from options if provided
-        taggedAccount: options.taggedAccount || null
-    });
-    log(`Person Detection Complete: Found ${linkedPersons.length} persons.`);
-
-    // --- RESULT CONSOLIDATION ---
+    // ─── Consolidate ──────────────────────────────────────────────────────
     const finalResult = {
-      risk_level: finalRiskLevel,
-      risk_score: finalRiskScore,
-      primary_intent: currentCategory,
-      category: currentCategory,
-      grievance_type: llmResult.grievance_type || 'Normal',
-      grievance_topic_reasoning: llmResult.grievance_reasoning || '',
-      intent: currentCategory,
-      violated_policies: mappingResult.platform_policies || [],
-      legal_sections: mappingResult.legal_sections || [],
-      triggered_keywords: mappingResult.triggered_keywords || [],
-      sentiment: finalSentiment,
-      target_party: llmResult.target_party || 'NEUTRAL',
-      stance: llmResult.stance || 'Neutral',
-      explanation: llmResult.reasoning || '',
-      highlights: mappingResult.triggered_keywords || [],
+      // Sentiment & risk (from LLM, perspective-aware)
+      sentiment: llmResult.sentiment,
+      target_party: llmResult.target_party,
+      stance: llmResult.stance,
+      risk_level: llmResult.risk_level,
+      risk_score: llmResult.risk_score,
+
+      // Categorization (from LLM)
+      category: llmResult.category,
+      primary_intent: llmResult.category,
+      intent: llmResult.category,
+      grievance_type: llmResult.grievance_type,
+      grievance_topic_reasoning: llmResult.grievance_reasoning,
+      explanation: llmResult.reasoning,
+
+      // Deterministic mapping
+      violated_policies: allViolatedPolicies,
+      legal_sections: aggregatedLegalSections,
+      triggered_keywords: aggregatedKeywords,
+      highlights: aggregatedKeywords,
+
+      // Resolved entities (Pass A + B)
       detected_location: detectedLocation,
       linked_persons: linkedPersons,
-      // Structure for ReasonModal
+
+      // Full LLM payload for ReasonModal
       llm_analysis: {
-        category: currentCategory,
-        grievance_type: llmResult.grievance_type || 'Normal',
-        grievance_reasoning: llmResult.grievance_reasoning || '',
-        intent: currentCategory,
-        sentiment: finalSentiment,
-        reasoning: llmResult.reasoning || '',
-        score: finalRiskScore,
-        platform_policies_violated: mappingResult.platform_policies || [],
-        bns_sections_violated: mappingResult.legal_sections || []
+        category: llmResult.category,
+        grievance_type: llmResult.grievance_type,
+        grievance_reasoning: llmResult.grievance_reasoning,
+        intent: llmResult.category,
+        sentiment: llmResult.sentiment,
+        target_party: llmResult.target_party,
+        stance: llmResult.stance,
+        reasoning: llmResult.reasoning,
+        score: llmResult.risk_score,
+        platform_policies_violated: allViolatedPolicies,
+        bns_sections_violated: aggregatedLegalSections
       }
     };
 
-    // 3. Final Metadata for UI
     finalResult.reasons = [
       finalResult.explanation,
-      `Risk Assessment: ${finalRiskLevel.toUpperCase()} (${finalRiskScore}%)`,
+      `Risk Assessment: ${finalResult.risk_level.toUpperCase()} (${finalResult.risk_score}%)`,
       detectedLocation ? `Location: ${detectedLocation.city}` : null,
-      ...finalResult.violated_policies.map(p => `Policy: ${p.policy_name}`),
-      ...finalResult.legal_sections.map(l => `Legal: ${l.act} ${l.section}`)
+      ...allViolatedPolicies.map((p) => `Policy: ${p.policy_name}`),
+      ...aggregatedLegalSections.map((l) => `Legal: ${l.act} ${l.section}`)
     ].filter(Boolean);
 
-    // --- PASS D: STANDALONE FORENSICS (COMMENTED OUT) ---
-    /*
-    let forensicResults = null;
-    if (!options.skipForensics && options.content && options.analysisId) {
-      forensicResults = await triggerForensicAnalysis(options.content, options.analysisId);
-    }
-    finalResult.forensic_results = forensicResults;
-    */
-
     return finalResult;
-  } catch (error) {
-    log(`Critical Analysis Error: ${error.message}`);
-    return {
-      risk_level: 'low',
-      risk_score: 0,
-      explanation: `Analysis failed: ${error.message}`,
-      violated_policies: [],
-      legal_sections: [],
-      triggered_keywords: []
-    };
+  } catch (err) {
+    console.error(`[AnalysisService] Critical error: ${err.message}`);
+    return emptyResult(`Analysis failed: ${err.message}`);
   }
 };
 
 module.exports = {
-  analyzeContent
+  analyzeContent,
+  triggerForensicAnalysis
 };
