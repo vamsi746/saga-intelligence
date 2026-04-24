@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
-    ChevronDown, X as XIcon, Globe, Plus, MapPin
+    ChevronDown, X as XIcon, Globe, Plus, MapPin, Search
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator
@@ -51,6 +52,7 @@ export const GrievanceTopNavbar = ({
 }) => {
     const [isHandleDropdownOpen, setIsHandleDropdownOpen] = useState(false);
     const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+    const [locationSearch, setLocationSearch] = useState('');
 
     // Platform tabs
     const PLATFORMS = [
@@ -61,6 +63,14 @@ export const GrievanceTopNavbar = ({
     ];
 
     const selectedHandleData = sources.find(h => h.handle === selectedHandle || h.id === selectedHandle);
+    const normalizedLocationSearch = locationSearch.trim().toLowerCase();
+    const filteredLocations = normalizedLocationSearch
+        ? uniqueLocations.filter((loc) => (
+            [loc.city, loc.district, loc.constituency]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(normalizedLocationSearch))
+        ))
+        : uniqueLocations;
 
     return (
         <div className="w-full bg-white border-b border-slate-200">
@@ -100,7 +110,13 @@ export const GrievanceTopNavbar = ({
 
                     <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
                         <div className="min-w-0 flex-1 sm:flex-none">
-                            <DropdownMenu open={isLocationDropdownOpen} onOpenChange={setIsLocationDropdownOpen}>
+                            <DropdownMenu
+                                open={isLocationDropdownOpen}
+                                onOpenChange={(open) => {
+                                    setIsLocationDropdownOpen(open);
+                                    if (!open) setLocationSearch('');
+                                }}
+                            >
                                 <DropdownMenuTrigger asChild>
                                     <Button
                                         variant="outline"
@@ -123,6 +139,20 @@ export const GrievanceTopNavbar = ({
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator />
 
+                                    <div className="px-2 py-2">
+                                        <div className="relative">
+                                            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                            <Input
+                                                value={locationSearch}
+                                                onChange={(e) => setLocationSearch(e.target.value)}
+                                                onKeyDown={(e) => e.stopPropagation()}
+                                                placeholder="Search location..."
+                                                className="h-8 border-slate-200 bg-white pl-8 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <DropdownMenuSeparator />
+
                                     {locationFilter && (
                                         <>
                                             <DropdownMenuItem
@@ -141,8 +171,8 @@ export const GrievanceTopNavbar = ({
                                         </>
                                     )}
 
-                                    {uniqueLocations.length > 0 ? (
-                                        uniqueLocations.map((loc) => (
+                                    {filteredLocations.length > 0 ? (
+                                        filteredLocations.map((loc) => (
                                             <DropdownMenuItem
                                                 key={loc.city}
                                                 onClick={() => {
@@ -172,7 +202,7 @@ export const GrievanceTopNavbar = ({
                                         ))
                                     ) : (
                                         <div className="px-3 py-2 text-xs text-slate-400 text-center">
-                                            No locations detected
+                                            {uniqueLocations.length > 0 ? 'No matching locations' : 'No locations detected'}
                                         </div>
                                     )}
                                 </DropdownMenuContent>
