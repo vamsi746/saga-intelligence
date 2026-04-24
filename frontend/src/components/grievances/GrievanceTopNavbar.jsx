@@ -63,220 +63,208 @@ export const GrievanceTopNavbar = ({
     const selectedHandleData = sources.find(h => h.handle === selectedHandle || h.id === selectedHandle);
 
     return (
-        <div className="bg-white border-b border-slate-200 flex flex-col">
-            <div className="px-6 py-0">
-                {/* ─────────────────────────────────────────────────── */
-                /*              SECTION 1: PLATFORM TABS                */
-                /* ─────────────────────────────────────────────────── */}
-                <div className="flex items-center gap-3 border-b border-slate-100 overflow-x-auto scrollbar-hide py-1">
-                    {PLATFORMS.map((platform) => {
-                        const isActive = activePlatform === platform.id;
-                        const Icon = platform.icon;
+        <div className="w-full bg-white border-b border-slate-200">
+            <div className="w-full px-3 sm:px-4 lg:px-6 py-3">
+                <div className="flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:gap-4">
+                    <div className="min-w-0 flex-1">
+                        <div className="overflow-x-auto scrollbar-hide">
+                            <div className="flex min-w-max items-center gap-2 border-b border-slate-100 pb-2 xl:min-w-0">
+                                {PLATFORMS.map((platform) => {
+                                    const isActive = activePlatform === platform.id;
+                                    const Icon = platform.icon;
 
-                        return (
-                            <button
-                                key={platform.id}
-                                onClick={() => onPlatformChange?.(platform.id)}
-                                className={cn(
-                                    'flex items-center gap-3 px-6 py-4 text-base font-semibold transition-all duration-200 relative whitespace-nowrap rounded-lg active:scale-95 active:translate-y-[1px]',
-                                    'hover:bg-slate-50',
-                                    isActive
-                                        ? 'text-slate-900 font-semibold'
-                                        : 'text-slate-600 hover:text-slate-900',
-                                    isActive && 'border-b-2 border-blue-500'
-                                )}
-                            >
-                                {Icon ? (
-                                    <Icon className={cn('h-5 w-5', platform.color)} />
-                                ) : (
-                                    <Globe className="h-5 w-5 text-slate-600" />
-                                )}
-                                <span>{platform.label}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* ─────────────────────────────────────────────────── */
-                /*             SECTION 2: RIGHT DROPDOWNS               */
-                /* ─────────────────────────────────────────────────── */}
-                <div className="flex items-center justify-end gap-4 py-3">
-                    {/* Location Filter Dropdown */}
-                    <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
-                        <DropdownMenu open={isLocationDropdownOpen} onOpenChange={setIsLocationDropdownOpen}>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className={cn(
-                                        'flex items-center gap-2 font-medium',
-                                        locationFilter ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''
-                                    )}
-                                >
-                                    <MapPin className="h-3.5 w-3.5" />
-                                    <span className="truncate max-w-[130px]">
-                                        {locationFilter || 'Location'}
-                                    </span>
-                                    <ChevronDown className="h-4 w-4 opacity-50" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
-                                <DropdownMenuLabel className="text-slate-700 font-semibold">
-                                    Filter by Location
-                                </DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-
-                                {/* Clear selection */}
-                                {locationFilter && (
-                                    <>
-                                        <DropdownMenuItem
-                                            onClick={() => {
-                                                onLocationChange?.(null);
-                                                setIsLocationDropdownOpen(false);
-                                            }}
-                                            className="cursor-pointer text-slate-600 hover:bg-slate-100"
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                <XIcon className="h-3.5 w-3.5" />
-                                                Clear Selection
-                                            </span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                    </>
-                                )}
-
-                                {/* Location options */}
-                                {uniqueLocations.length > 0 ? (
-                                    uniqueLocations.map((loc) => (
-                                        <DropdownMenuItem
-                                            key={loc.city}
-                                            onClick={() => {
-                                                onLocationChange?.(loc.city);
-                                                setIsLocationDropdownOpen(false);
-                                            }}
+                                    return (
+                                        <button
+                                            key={platform.id}
+                                            onClick={() => onPlatformChange?.(platform.id)}
                                             className={cn(
-                                                'cursor-pointer transition-colors',
-                                                locationFilter === loc.city
-                                                    ? 'bg-emerald-50 text-emerald-700 font-semibold'
-                                                    : 'text-slate-700 hover:bg-slate-100'
+                                                'flex min-w-[92px] items-center justify-center gap-2 px-4 py-3 text-sm sm:text-base font-semibold transition-all duration-200 relative whitespace-nowrap rounded-lg active:scale-95 active:translate-y-[1px]',
+                                                'hover:bg-slate-50',
+                                                isActive
+                                                    ? 'text-slate-900 font-semibold border-b-2 border-blue-500'
+                                                    : 'text-slate-600 hover:text-slate-900'
                                             )}
                                         >
-                                            <div className="flex items-center justify-between w-full">
-                                                <span className="flex items-center gap-2">
-                                                    <MapPin className="h-3 w-3 text-slate-400" />
-                                                    {loc.city}
-                                                </span>
-                                                <span className={cn(
-                                                    'text-xs font-medium ml-2',
-                                                    locationFilter === loc.city ? 'text-emerald-600' : 'text-slate-400'
-                                                )}>
-                                                    {loc.count}
-                                                </span>
-                                            </div>
-                                        </DropdownMenuItem>
-                                    ))
-                                ) : (
-                                    <div className="px-3 py-2 text-xs text-slate-400 text-center">
-                                        No locations detected
-                                    </div>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                                            {Icon ? (
+                                                <Icon className={cn('h-4 w-4 sm:h-5 sm:w-5', platform.color)} />
+                                            ) : (
+                                                <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600" />
+                                            )}
+                                            <span>{platform.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Official Handles Dropdown - Only show if All platforms selected or as fallback */}
-                   {activePlatform === 'all' && (
-                        <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
-                        <span className="text-xs font-medium text-slate-600 hidden sm:inline">
-                            Official Handle:
-                        </span>
-                        <DropdownMenu open={isHandleDropdownOpen} onOpenChange={setIsHandleDropdownOpen}>
-                            <DropdownMenuTrigger asChild>
+                    <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:justify-end">
+                        <div className="min-w-0 flex-1 sm:flex-none">
+                            <DropdownMenu open={isLocationDropdownOpen} onOpenChange={setIsLocationDropdownOpen}>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className={cn(
+                                            'flex w-full sm:w-auto max-w-full items-center justify-between gap-2 font-medium',
+                                            locationFilter ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''
+                                        )}
+                                    >
+                                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                        <span className="truncate max-w-[160px]">
+                                            {locationFilter || 'Location'}
+                                        </span>
+                                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                                    <DropdownMenuLabel className="text-slate-700 font-semibold">
+                                        Filter by Location
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+
+                                    {locationFilter && (
+                                        <>
+                                            <DropdownMenuItem
+                                                onClick={() => {
+                                                    onLocationChange?.(null);
+                                                    setIsLocationDropdownOpen(false);
+                                                }}
+                                                className="cursor-pointer text-slate-600 hover:bg-slate-100"
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    <XIcon className="h-3.5 w-3.5" />
+                                                    Clear Selection
+                                                </span>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                        </>
+                                    )}
+
+                                    {uniqueLocations.length > 0 ? (
+                                        uniqueLocations.map((loc) => (
+                                            <DropdownMenuItem
+                                                key={loc.city}
+                                                onClick={() => {
+                                                    onLocationChange?.(loc.city);
+                                                    setIsLocationDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    'cursor-pointer transition-colors',
+                                                    locationFilter === loc.city
+                                                        ? 'bg-emerald-50 text-emerald-700 font-semibold'
+                                                        : 'text-slate-700 hover:bg-slate-100'
+                                                )}
+                                            >
+                                                <div className="flex items-center justify-between w-full gap-2">
+                                                    <span className="flex min-w-0 items-center gap-2">
+                                                        <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
+                                                        <span className="truncate">{loc.city}</span>
+                                                    </span>
+                                                    <span className={cn(
+                                                        'text-xs font-medium ml-2 shrink-0',
+                                                        locationFilter === loc.city ? 'text-emerald-600' : 'text-slate-400'
+                                                    )}>
+                                                        {loc.count}
+                                                    </span>
+                                                </div>
+                                            </DropdownMenuItem>
+                                        ))
+                                    ) : (
+                                        <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                                            No locations detected
+                                        </div>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+
+                        {activePlatform === 'all' && (
+                            <div className="min-w-0 flex-1 sm:flex-none">
+                                <DropdownMenu open={isHandleDropdownOpen} onOpenChange={setIsHandleDropdownOpen}>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className={cn(
+                                                'flex w-full sm:w-auto max-w-full items-center justify-between gap-2 font-medium',
+                                                selectedHandle ? 'bg-blue-50 text-blue-700 border-blue-300' : ''
+                                            )}
+                                        >
+                                            <span className="truncate max-w-[180px]">
+                                                {selectedHandleData?.display_name || selectedHandleData?.handle || 'Select Handle'}
+                                            </span>
+                                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-56">
+                                        <DropdownMenuLabel className="text-slate-700 font-semibold">
+                                            Filter by Account
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+
+                                        {selectedHandle && (
+                                            <>
+                                                <DropdownMenuItem
+                                                    onClick={() => {
+                                                        onHandleChange?.(null);
+                                                        setIsHandleDropdownOpen(false);
+                                                    }}
+                                                    className="cursor-pointer text-slate-600 hover:bg-slate-100"
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <XIcon className="h-3.5 w-3.5" />
+                                                        Clear Selection
+                                                    </span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                            </>
+                                        )}
+
+                                        {sources.map((source) => (
+                                            <DropdownMenuItem
+                                                key={source.id || source.handle}
+                                                onClick={() => {
+                                                    onHandleChange?.(source.handle);
+                                                    setIsHandleDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    'cursor-pointer transition-colors',
+                                                    selectedHandle === source.handle
+                                                        ? 'bg-blue-50 text-blue-700 font-semibold'
+                                                        : 'text-slate-700 hover:bg-slate-100'
+                                                )}
+                                            >
+                                                <div className="flex min-w-0 flex-col gap-1">
+                                                    <span className="truncate font-medium">{source.display_name || source.handle}</span>
+                                                    <span className="truncate text-xs text-slate-500">@{source.handle}</span>
+                                                </div>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                        )}
+
+                        {activePlatform !== 'whatsapp' && (
+                            <div className="flex-1 sm:flex-none">
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className={cn(
-                                        'flex items-center gap-2 font-medium',
-                                        selectedHandle ? 'bg-blue-50 text-blue-700 border-blue-300' : ''
-                                    )}
+                                    onClick={onAddSource}
+                                    className="w-full sm:w-auto gap-2 font-medium text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
                                 >
-                                    <span className="truncate max-w-[150px]">
-                                        {selectedHandleData?.display_name || selectedHandleData?.handle || 'Select Handle'}
-                                    </span>
-                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Add Account
                                 </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuLabel className="text-slate-700 font-semibold">
-                                    Filter by Account
-                                </DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-
-                                {/* Clear selection */}
-                                {selectedHandle && (
-                                    <>
-                                        <DropdownMenuItem
-                                            onClick={() => {
-                                                onHandleChange?.(null);
-                                                setIsHandleDropdownOpen(false);
-                                            }}
-                                            className="cursor-pointer text-slate-600 hover:bg-slate-100"
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                <XIcon className="h-3.5 w-3.5" />
-                                                Clear Selection
-                                            </span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                    </>
-                                )}
-
-                                {/* Handle options */}
-                                {sources.map((source) => (
-                                    <DropdownMenuItem
-                                        key={source.id || source.handle}
-                                        onClick={() => {
-                                            onHandleChange?.(source.handle);
-                                            setIsHandleDropdownOpen(false);
-                                        }}
-                                        className={cn(
-                                            'cursor-pointer transition-colors',
-                                            selectedHandle === source.handle
-                                                ? 'bg-blue-50 text-blue-700 font-semibold'
-                                                : 'text-slate-700 hover:bg-slate-100'
-                                        )}
-                                    >
-                                        <div className="flex flex-col gap-1">
-                                            <span className="font-medium">{source.display_name || source.handle}</span>
-                                            <span className="text-xs text-slate-500">@{source.handle}</span>
-                                        </div>
-                                    </DropdownMenuItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                            </div>
+                        )}
                     </div>
-                   )}
-
-                    {/* Add Account Button */}
-                    {activePlatform !== 'whatsapp' && (
-                        <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={onAddSource}
-                                className="gap-2 font-medium text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
-                            >
-                                <Plus className="h-3.5 w-3.5" />
-                                Add Account
-                            </Button>
-                        </div>
-                    )}
                 </div>
             </div>
-
-            {/* Monitored accounts section hidden — Add Account button moved to top right */}
         </div>
     );
+
 };
 
 export default GrievanceTopNavbar;

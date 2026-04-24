@@ -657,7 +657,7 @@ const Grievances = () => {
         } else {
             fetchGrievances();
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, platformFilter, dateRange, debouncedSearch, navbarPlatform, navbarStatus, selectedHandle, sentimentFilter, topicFilter, analysisCategoryFilter, locationFilter, allowedNavbarStatuses, politicianContext, disabledKeywordIds, customKeywords, showTopMlaGrid]);
 
     const fetchSources = async () => {
@@ -1556,7 +1556,7 @@ const Grievances = () => {
                                     className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-red-600 px-2 py-1 rounded-lg border border-transparent hover:border-red-200 hover:bg-red-50 transition-all"
                                 >
                                     <X className="h-3.5 w-3.5" />
-                                    Exit MLA Mode
+                                    Exit
                                 </button>
                             </div>
                         </div>
@@ -1571,11 +1571,10 @@ const Grievances = () => {
                                         key={kw.id}
                                         onClick={() => toggleMlaKeyword(kw.id)}
                                         title={isDisabled ? 'Click to enable' : 'Click to pause'}
-                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold transition-all cursor-pointer select-none ${
-                                            isDisabled
-                                                ? 'bg-white text-slate-400 border-slate-200 line-through opacity-60'
-                                                : (kwTypeStyle[kw.type] || kwTypeStyle.primary)
-                                        }`}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold transition-all cursor-pointer select-none ${isDisabled
+                                            ? 'bg-white text-slate-400 border-slate-200 line-through opacity-60'
+                                            : (kwTypeStyle[kw.type] || kwTypeStyle.primary)
+                                            }`}
                                     >
                                         {kw.label}
                                         {!kw.isSystem && (
@@ -1628,12 +1627,6 @@ const Grievances = () => {
                         )}
 
                         {/* ── Isolation mode footer ── */}
-                        <div className="px-4 py-1.5 bg-indigo-900/5 border-t border-indigo-100 flex items-center gap-2">
-                            <Shield className="h-3 w-3 text-indigo-400 shrink-0" />
-                            <span className="text-[10px] text-indigo-500">
-                                Strict isolation mode — only content matching <span className="font-semibold">{politicianContext.name}</span>'s keywords is shown. No cross-MLA data.
-                            </span>
-                        </div>
                     </div>
                 );
             })()}
@@ -1751,10 +1744,9 @@ const Grievances = () => {
                 <div className="mx-2 mt-2 flex items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg text-xs">
                     <span className="text-violet-700 font-medium">Filtered by:</span>
                     {sentimentFilter && (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[11px] ${
-                            sentimentFilter === 'negative' ? 'bg-red-100 text-red-700' :
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold text-[11px] ${sentimentFilter === 'negative' ? 'bg-red-100 text-red-700' :
                             sentimentFilter === 'positive' ? 'bg-emerald-100 text-emerald-700' :
-                            'bg-amber-100 text-amber-700'}`}>
+                                'bg-amber-100 text-amber-700'}`}>
                             {sentimentFilter === 'negative' ? 'Negative' : sentimentFilter === 'positive' ? 'Positive' : 'Moderate'}
                             <button type="button" onClick={() => setSentimentFilter(null)} className="ml-0.5 hover:opacity-70">&times;</button>
                         </span>

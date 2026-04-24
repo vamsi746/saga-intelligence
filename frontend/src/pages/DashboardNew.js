@@ -1,20 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 // ...existing imports...
 import ReactPlayer from 'react-player';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { usePoliticianNavigation } from '../contexts/PoliticianNavigationContext';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   Shield, AlertTriangle, Send,
   Users, ChevronDown, Loader2, Info, Clock, FileText, MessageSquare,
   ArrowRight, RefreshCw, X, Video, Pencil, Play, ExternalLink, Settings,
-  BarChart3, Tag, MapPin, Star, TrendingUp, TrendingDown, Minus, Crown
+  BarChart3, Tag, MapPin, TrendingDown, Minus
 } from 'lucide-react';
 import { Card } from '../components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useDashboard } from '../contexts/DashboardContext';
-import { TELANGANA_MINISTERS, TOP_10_MINISTERS, getMinisterInitials } from '../data/telanganaMinistersData';
+import { getMinisterInitials } from '../data/telanganaMinistersData';
+import { PARTY_WISE_MLA_DIRECTORY, TOTAL_MLA_DIRECTORY_COUNT } from '../data/telanganaMlaDirectory';
 import api from '../lib/api';
 
 import TelanganaMap from './TelanganaMap';
@@ -416,24 +417,25 @@ const DroneViewStrip = () => {
 // ─── Ministers Panel ────────────────────────────────────────────────────────
 const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selectedCount = 0 }) => {
   const { navigateToPoliticianGrievances } = usePoliticianNavigation();
-  const scrollRef = useRef(null);
-  const top10Ids = new Set(TOP_10_MINISTERS.map((m) => m.id));
+  const [activeParty, setActiveParty] = useState('INC');
 
-  const scroll = (dir) => {
-    if (scrollRef.current) scrollRef.current.scrollBy({ left: dir * 260, behavior: 'smooth' });
-  };
+  const activePartyGroup = useMemo(
+    () => PARTY_WISE_MLA_DIRECTORY.find((group) => group.party === activeParty) || PARTY_WISE_MLA_DIRECTORY[0],
+    [activeParty]
+  );
+
+  const selectableCount = activePartyGroup.members.filter((member) => member.selectable).length;
 
   return (
     <Card className="border border-border/50 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border/30 bg-gradient-to-r from-emerald-500/8 to-transparent">
+      <div className={`flex items-center justify-between px-5 py-3 border-b border-border/30 bg-gradient-to-r ${activePartyGroup.accent}`}>
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
-            <Crown className="h-3.5 w-3.5 text-emerald-600" />
+          <div className="p-1.5 rounded-lg" style={{ background: `${activePartyGroup.color}18` }}>
+            <Users className="h-3.5 w-3.5" style={{ color: activePartyGroup.color }} />
           </div>
           <div>
-            <h3 className="text-[13px] font-semibold text-foreground">Telangana Congress MLAs</h3>
-            <p className="text-[10px] text-muted-foreground">INC · {TELANGANA_MINISTERS.length} MLAs · Click to highlight constituency</p>
+            <h3 className="text-[13px] font-semibold text-foreground">Telangana MLAs</h3>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -450,133 +452,138 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
               </button>
             </>
           )}
-          <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-full px-2 py-0.5">
-            <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500" />
-            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">Top 10 Active</span>
+          <div className="flex items-center gap-1 rounded-full border px-2 py-0.5"
+            style={{ borderColor: `${activePartyGroup.color}35`, background: `${activePartyGroup.color}10`, color: activePartyGroup.color }}>
+            <span className="text-[10px] font-semibold">{activePartyGroup.label}</span>
+            <span className="text-[10px] opacity-75">{activePartyGroup.members.length}</span>
           </div>
-          <button onClick={() => scroll(-1)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-            <ChevronDown className="h-4 w-4 rotate-90" />
-          </button>
-          <button onClick={() => scroll(1)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-            <ChevronDown className="h-4 w-4 -rotate-90" />
-          </button>
         </div>
       </div>
 
-      {/* Scrollable row */}
-      <div
-        ref={scrollRef}
-        className="flex gap-3 p-4 overflow-x-auto custom-scrollbar"
-        style={{ scrollbarWidth: 'thin' }}
-      >
-        {TELANGANA_MINISTERS.map((minister) => {
-          const isTop10 = top10Ids.has(minister.id);
-          const rank = TOP_10_MINISTERS.findIndex((m) => m.id === minister.id) + 1;
-          const isSelected = selectedIds.has(minister.id);
-          return (
-            <button
-              key={minister.id}
-              onClick={() => onToggle(minister)}
-              className={`flex-shrink-0 w-[180px] flex flex-col items-center gap-2 p-3 rounded-xl border transition-all duration-200 bg-card group cursor-pointer text-left relative overflow-hidden
-                ${isSelected
-                  ? 'border-2 shadow-lg scale-[1.04]'
-                  : 'border-border/50 hover:border-emerald-400/60 hover:shadow-md hover:scale-[1.03]'}`}
-              style={isSelected ? { borderColor: minister.color, boxShadow: `0 4px 20px ${minister.color}30` } : {}}
-            >
-              {/* Top-10 ribbon */}
-              {isTop10 && (
-                <div
-                  className="absolute top-0 right-0 px-1.5 py-0.5 text-[8px] font-bold text-white rounded-bl-lg"
-                  style={{ background: minister.color }}
-                >
-                  #{rank} Active
-                </div>
-              )}
+      <div className="px-4 py-3 border-b border-border/30 bg-muted/20">
+        <div className="flex flex-wrap gap-2">
+          {PARTY_WISE_MLA_DIRECTORY.map((group) => {
+            const isActive = group.party === activeParty;
+            return (
+              <button
+                key={group.party}
+                onClick={() => setActiveParty(group.party)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-all ${isActive ? 'text-white shadow-sm' : 'text-muted-foreground hover:text-foreground bg-background'
+                  }`}
+                style={isActive ? { background: group.color, borderColor: group.color } : { borderColor: `${group.color}30` }}
+              >
+                {group.label} · {group.members.length}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-              {/* Avatar */}
-              <div className="relative mt-1">
-                <div
-                  className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all group-hover:ring-4"
-                  style={{ ringColor: minister.color, borderColor: minister.color }}
-                >
-                  <Avatar className="w-full h-full">
-                    <AvatarImage
-                      src={minister.image}
-                      alt={minister.shortName}
-                      className="object-cover object-top"
-                    />
-                    <AvatarFallback
-                      className="text-white text-base font-bold"
-                      style={{ background: minister.color }}
-                    >
-                      {getMinisterInitials(minister.shortName)}
-                    </AvatarFallback>
-                  </Avatar>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/20 bg-background/70">
+        <div>
+          <p className="text-[11px] font-semibold text-foreground">{activePartyGroup.fullName}</p>
+        </div>
+        <span className="text-[10px] font-medium text-muted-foreground">
+          {activePartyGroup.members.length} members
+        </span>
+      </div>
+
+      {/* Party-wise MLA grid */}
+      <div className="max-h-[380px] overflow-y-auto p-4 custom-scrollbar">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {activePartyGroup.members.map((member) => {
+            const isSelected = selectedIds.has(member.id);
+            const isSelectable = member.selectable;
+            const linkedProfile = member.linkedProfile;
+            const positionText = member.department
+              || (member.role === 'Chief Minister' || member.role === 'Deputy Chief Minister' ? member.role : 'MLA');
+
+            return (
+              <button
+                key={member.id}
+                type="button"
+                disabled={!isSelectable}
+                onClick={() => isSelectable && onToggle(linkedProfile)}
+                className={`flex min-h-[220px] flex-col items-center gap-2 rounded-xl border bg-card p-3 text-left transition-all duration-200 relative overflow-hidden ${isSelected
+                  ? 'border-2 shadow-lg scale-[1.02] cursor-pointer'
+                  : isSelectable
+                    ? 'border-border/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
+                    : 'border-border/40 opacity-95 cursor-default'
+                  }`}
+                style={isSelected ? { borderColor: member.color, boxShadow: `0 4px 20px ${member.color}25` } : undefined}
+              >
+
+                {/* Avatar */}
+                <div className="relative mt-1">
+                  <div
+                    className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all group-hover:ring-4"
+                    style={{ ringColor: member.color, borderColor: member.color }}
+                  >
+                    <Avatar className="w-full h-full">
+                      <AvatarImage
+                        src={member.image}
+                        alt={member.shortName}
+                        className="object-cover object-top"
+                      />
+                      <AvatarFallback
+                        className="text-white text-base font-bold"
+                        style={{ background: member.color }}
+                      >
+                        {getMinisterInitials(member.shortName)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
                 </div>
-                {/* Activity indicator */}
-                {isTop10 && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-card flex items-center justify-center">
-                    <TrendingUp className="h-2 w-2 text-white" />
+
+                {/* Name */}
+                <div className="w-full text-center">
+                  <p className="text-[11px] font-bold text-foreground leading-tight line-clamp-2 min-h-[28px]">
+                    {member.shortName}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1 min-h-[12px]">
+                    {positionText || '\u00A0'}
+                  </p>
+                </div>
+
+                {/* Constituency / party chip */}
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
+                  style={{ borderColor: `${member.color}40`, color: member.color, background: `${member.color}10` }}
+                >
+                  <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+                  <span className="truncate">{member.constituency || member.party}</span>
+                </div>
+
+                <div className="mt-auto w-full">
+                  {member.district && (
+                    <p className="text-[9px] text-muted-foreground text-center line-clamp-1 mb-1">
+                      {member.district}
+                    </p>
+                  )}
+                </div>
+
+                {/* Selected indicator + View Grievances */}
+                {isSelected && (
+                  <div className="w-full flex flex-col gap-1">
+                    <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
+                      style={{ background: member.color }}>
+                      Selected ✓
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigateToPoliticianGrievances(linkedProfile);
+                      }}
+                      className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
+                      style={{ borderColor: member.color, color: member.color, background: `${member.color}10` }}
+                    >
+                      View Grievances →
+                    </button>
                   </div>
                 )}
-              </div>
-
-              {/* Name */}
-              <div className="w-full text-center">
-                <p className="text-[11px] font-bold text-foreground leading-tight group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors line-clamp-2">
-                  {minister.shortName}
-                </p>
-                <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1">
-                  {minister.role === 'Chief Minister' || minister.role === 'Deputy Chief Minister'
-                    ? minister.role
-                    : minister.department}
-                </p>
-              </div>
-
-              {/* Constituency chip */}
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
-                style={{ borderColor: `${minister.color}40`, color: minister.color, background: `${minister.color}10` }}
-              >
-                <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
-                <span className="truncate">{minister.constituency}</span>
-              </div>
-
-              {/* Activity bar */}
-              <div className="w-full">
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[8px] text-muted-foreground">Activity</span>
-                  <span className="text-[8px] font-bold" style={{ color: minister.color }}>{minister.activityScore}%</span>
-                </div>
-                <div className="h-1 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${minister.activityScore}%`, background: minister.color }}
-                  />
-                </div>
-              </div>
-
-              {/* Selected indicator + View Grievances */}
-              {isSelected && (
-                <div className="w-full flex flex-col gap-1">
-                  <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
-                    style={{ background: minister.color }}>
-                    Selected ✓
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigateToPoliticianGrievances(minister);
-                    }}
-                    className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
-                    style={{ borderColor: minister.color, color: minister.color, background: `${minister.color}10` }}
-                  >
-                    View Grievances →
-                  </button>
-                </div>
-              )}
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </Card>
   );
@@ -712,29 +719,24 @@ const MinisterDetailPanel = ({ minister, data }) => {
 
 const Dashboard = () => {
   const { dashboardData, loading, fetchDashboardData, refreshDashboard, hasCachedData } = useDashboard();
-  const navigate = useNavigate();
   const { navigateToPoliticianGrievances } = usePoliticianNavigation();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMinisters, setSelectedMinisters] = useState([]);
-  const singleSelected = selectedMinisters.length === 1 ? selectedMinisters[0] : null;
+  const [selectedMinister, setSelectedMinister] = useState(null);
   const [ministerData, setMinisterData] = useState(null);
   const [ministerDataLoading, setMinisterDataLoading] = useState(false);
 
   const toggleMinister = useCallback((minister) => {
-    setSelectedMinisters(prev => {
-      const exists = prev.some(m => m.id === minister.id);
-      return exists ? prev.filter(m => m.id !== minister.id) : [...prev, minister];
-    });
+    setSelectedMinister((prev) => (prev?.id === minister.id ? null : minister));
   }, []);
 
   useEffect(() => {
-    if (!singleSelected) { setMinisterData(null); return; }
+    if (!selectedMinister) { setMinisterData(null); return; }
     setMinisterDataLoading(true);
-    api.get('/grievances/location-summary', { params: { location_city: singleSelected.constituency.toLowerCase() } })
+    api.get('/grievances/location-summary', { params: { location_city: selectedMinister.constituency.toLowerCase() } })
       .then(r => setMinisterData(r.data || null))
       .catch(() => setMinisterData(null))
       .finally(() => setMinisterDataLoading(false));
-  }, [singleSelected]);
+  }, [selectedMinister]);
 
   const [alertType, setAlertType] = useState('active');
   const [alertPlatform, setAlertPlatform] = useState('all');
@@ -827,10 +829,10 @@ const Dashboard = () => {
 
       {/* Ministers Panel */}
       <MinistersPanel
-        selectedIds={new Set(selectedMinisters.map(m => m.id))}
+        selectedIds={new Set(selectedMinister ? [selectedMinister.id] : [])}
         onToggle={toggleMinister}
-        onClearAll={() => setSelectedMinisters([])}
-        selectedCount={selectedMinisters.length}
+        onClearAll={() => setSelectedMinister(null)}
+        selectedCount={selectedMinister ? 1 : 0}
       />
 
       {/* Grievance Sentiment Analytics */}
@@ -915,51 +917,40 @@ const Dashboard = () => {
             </Card>
 
             {/* Constituency Map / Minister Detail */}
-            {selectedMinisters.length > 0 ? (
+            {selectedMinister ? (
               /* ── One or more MLAs selected ── */
-              <div className="lg:col-span-1 border border-border/50 rounded-xl overflow-hidden shadow-sm"
-                style={{ borderColor: singleSelected ? `${singleSelected.color}40` : '#e2e8f0' }}>
+              <div className="lg:col-span-8 border border-border/50 rounded-xl overflow-hidden shadow-sm"
+                style={{ borderColor: `${selectedMinister.color}40` }}>
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30"
-                  style={singleSelected ? { background: `linear-gradient(to right, ${singleSelected.color}12, transparent)` } : {}}>
+                  style={{ background: `linear-gradient(to right, ${selectedMinister.color}12, transparent)` }}>
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg" style={{ background: singleSelected ? `${singleSelected.color}20` : '#f1f5f9' }}>
-                      <BarChart3 className="h-3.5 w-3.5" style={{ color: singleSelected?.color || '#64748b' }} />
+                    <div className="p-1.5 rounded-lg" style={{ background: `${selectedMinister.color}20` }}>
+                      <BarChart3 className="h-3.5 w-3.5" style={{ color: selectedMinister.color }} />
                     </div>
                     <h3 className="text-[13px] font-semibold text-foreground">
-                      {singleSelected
-                        ? `${singleSelected.constituency} Constituency`
-                        : `${selectedMinisters.length} Constituencies Selected`}
+                      {selectedMinister.constituency} Constituency
                     </h3>
                   </div>
                   <div className="flex items-center gap-2">
                     {ministerDataLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                    {singleSelected && (
-                      <button
-                        onClick={() => navigateToPoliticianGrievances(singleSelected)}
-                        className="text-[10px] font-semibold px-2 py-0.5 rounded hover:opacity-80 transition-opacity text-white"
-                        style={{ background: singleSelected.color }}
-                      >
-                        View Grievances →
-                      </button>
-                    )}
-                    <button onClick={() => setSelectedMinisters([])} className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors">✕ Clear All</button>
+                    <button
+                      onClick={() => navigateToPoliticianGrievances(selectedMinister)}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded hover:opacity-80 transition-opacity text-white"
+                      style={{ background: selectedMinister.color }}
+                    >
+                      View Grievances →
+                    </button>
+                    <button onClick={() => setSelectedMinister(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors">✕ Clear</button>
                   </div>
                 </div>
                 <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
-                  {/* Left: detail panel — only shown when exactly one MLA is selected */}
+                  {/* Left: detail panel */}
                   <div className="w-[190px] flex-shrink-0 overflow-y-auto p-2.5 border-r border-border/30 custom-scrollbar">
-                    {singleSelected ? (
-                      <MinisterDetailPanel minister={singleSelected} data={ministerData} />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-2">
-                        <Users className="h-8 w-8 text-muted-foreground/30" />
-                        <p className="text-[10px] text-muted-foreground italic">{selectedMinisters.length} MLAs selected.<br />Select only one to see details.</p>
-                      </div>
-                    )}
+                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
                   </div>
                   {/* Right: map */}
                   <div className="flex-1 min-w-0">
-                    <TelanganaMap embedded highlightMinisters={selectedMinisters} />
+                    <TelanganaMap embedded highlightMinister={selectedMinister} />
                   </div>
                 </div>
               </div>
@@ -973,7 +964,7 @@ const Dashboard = () => {
                     </div>
                     <h3 className="text-[13px] font-semibold text-foreground">Telangana Constituencies</h3>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-medium">Select an MLA to view constituency</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">Select a mapped MLA to view constituency</span>
                 </div>
                 <div className="flex items-center justify-center bg-white dark:bg-slate-950/20">
                   <div className="w-full h-[480px]">
@@ -989,7 +980,7 @@ const Dashboard = () => {
       {/* Combined Analytics & Alerts Grid */}
       <TooltipProvider>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[280px] overflow-hidden">
-          
+
           {/* Col 1-2: Grievance Analytics (Pie) */}
           <div className={`${categoryAnalytics ? 'lg:col-span-2' : 'hidden'} h-[280px] overflow-hidden`}>
             {categoryAnalytics && (() => {
@@ -1132,16 +1123,16 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="flex items-end justify-between">
-                     <div>
-                       <p className="text-4xl font-bold bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent leading-none">{getAlertCount()}</p>
-                       <p className="text-[10px] text-muted-foreground mt-1">Total {alertType.replace('_', ' ')}</p>
-                     </div>
-                     {alertType === 'escalated' && (
-                        <div className="text-[10px] text-right text-muted-foreground">
-                            <p>Gen: {getEscalatedGeneratedCount()}</p>
-                            <p>Pend: {getEscalatedPendingCount()}</p>
-                        </div>
-                     )}
+                  <div>
+                    <p className="text-4xl font-bold bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent leading-none">{getAlertCount()}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Total {alertType.replace('_', ' ')}</p>
+                  </div>
+                  {alertType === 'escalated' && (
+                    <div className="text-[10px] text-right text-muted-foreground">
+                      <p>Gen: {getEscalatedGeneratedCount()}</p>
+                      <p>Pend: {getEscalatedPendingCount()}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
