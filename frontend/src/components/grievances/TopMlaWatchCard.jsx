@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Loader2, MapPin, RefreshCw, ExternalLink, Clock } from 'lucide-react';
 import { Card } from '../ui/card';
@@ -7,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Button } from '../ui/button';
 import { GrievanceCard } from './GrievanceCard';
 import usePoliticianGrievances from '../../hooks/usePoliticianGrievances';
-import { buildGrievancesUrl } from '../../utils/politicianNavigation';
+import { usePoliticianNavigation } from '../../contexts/PoliticianNavigationContext';
 import { getMinisterInitials } from '../../data/telanganaMinistersData';
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
@@ -35,6 +34,8 @@ export const TopMlaWatchCard = ({
     searchLimit: 30,
     constituencyLimit: 20,
   });
+
+  const { navigateToPoliticianGrievances } = usePoliticianNavigation();
 
   const refreshLabel = lastUpdatedAt
     ? formatDistanceToNowStrict(lastUpdatedAt, { addSuffix: true })
@@ -86,11 +87,13 @@ export const TopMlaWatchCard = ({
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button asChild size="sm" className="h-8 gap-1.5 text-[11px] bg-slate-900 hover:bg-slate-800">
-            <Link to={buildGrievancesUrl(politician)}>
-              Full Feed
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 text-[11px] bg-slate-900 hover:bg-slate-800"
+            onClick={() => navigateToPoliticianGrievances(politician)}
+          >
+            Full Feed
+            <ExternalLink className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>

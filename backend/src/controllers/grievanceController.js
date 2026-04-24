@@ -152,6 +152,20 @@ const buildListQuery = (params = {}, options = {}) => {
     const finalTab = mappedFilterTab !== 'all' ? mappedFilterTab : (normalizedTab || 'all');
     const query = { is_active: true };
 
+    // Default relevance gate: only return grievances that have at least one
+    // signal of platform relevance (tagged account, detected location, or
+    // identified person).  This prevents noise from broad keyword fetches
+    // that pulled non-Telangana X posts.
+    // Skip this gate when specific filters are active (search, handle,
+    // person_id, source_id) since those imply intentional narrow queries.
+    if (!search && !posted_by_handle && !person_id && !source_id) {
+        query.$or = [
+            { tagged_account: { $exists: true, $ne: '' } },
+            { 'detected_location.city': { $exists: true, $ne: null } },
+            { 'linked_persons.0': { $exists: true } }
+        ];
+    }
+
     if (classification) query.classification = classification;
     if (status) query['complaint.status'] = status;
     const effectiveTaggedAccount = tagged_account || handle;
@@ -695,8 +709,13 @@ const getGrievances = async (req, res) => {
             'content.media.url': 1,
             'content.media.preview_url': 1,
             'content.media.video_url': 1,
+            'content.media.original_url': 1,
+            'content.media.original_video_url': 1,
+            'content.media.original_preview_url': 1,
             'content.media.s3_url': 1,
             'content.media.s3_preview': 1,
+            // Include context for threaded display (parent tweet, quoted tweet, repost)
+            context: 1,
             tweet_url: 1,
             engagement: 1,
             post_date: 1,

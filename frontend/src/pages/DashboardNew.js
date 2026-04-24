@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 // ...existing imports...
 import ReactPlayer from 'react-player';
 import { Link, useNavigate } from 'react-router-dom';
-import { buildGrievancesUrl } from '../utils/politicianNavigation';
+import { usePoliticianNavigation } from '../contexts/PoliticianNavigationContext';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   Shield, AlertTriangle, Send,
@@ -415,7 +415,7 @@ const DroneViewStrip = () => {
 
 // ─── Ministers Panel ────────────────────────────────────────────────────────
 const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selectedCount = 0 }) => {
-  const navigate = useNavigate();
+  const { navigateToPoliticianGrievances } = usePoliticianNavigation();
   const scrollRef = useRef(null);
   const top10Ids = new Set(TOP_10_MINISTERS.map((m) => m.id));
 
@@ -565,7 +565,7 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(buildGrievancesUrl(minister));
+                      navigateToPoliticianGrievances(minister);
                     }}
                     className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
                     style={{ borderColor: minister.color, color: minister.color, background: `${minister.color}10` }}
@@ -627,8 +627,7 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
 
 // ─── Minister Detail Panel (shows in dashboard when minister is selected) ────
 const MinisterDetailPanel = ({ minister, data }) => {
-  const sentiment = { positive: data?.positive || 0, negative: data?.negative || 0, neutral: data?.neutral || 0 };
-  const total = data?.total || 0;
+  // Hooks must always be called unconditionally — early return comes after
   const categories = useMemo(() => {
     if (!data?.categories) return [];
     const map = {};
@@ -638,6 +637,12 @@ const MinisterDetailPanel = ({ minister, data }) => {
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [data]);
+
+  // Guard: nothing to render when no single minister is selected
+  if (!minister) return null;
+
+  const sentiment = { positive: data?.positive || 0, negative: data?.negative || 0, neutral: data?.neutral || 0 };
+  const total = data?.total || 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -708,6 +713,7 @@ const MinisterDetailPanel = ({ minister, data }) => {
 const Dashboard = () => {
   const { dashboardData, loading, fetchDashboardData, refreshDashboard, hasCachedData } = useDashboard();
   const navigate = useNavigate();
+  const { navigateToPoliticianGrievances } = usePoliticianNavigation();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMinisters, setSelectedMinisters] = useState([]);
   const singleSelected = selectedMinisters.length === 1 ? selectedMinisters[0] : null;
@@ -929,7 +935,7 @@ const Dashboard = () => {
                     {ministerDataLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     {singleSelected && (
                       <button
-                        onClick={() => navigate(buildGrievancesUrl(singleSelected))}
+                        onClick={() => navigateToPoliticianGrievances(singleSelected)}
                         className="text-[10px] font-semibold px-2 py-0.5 rounded hover:opacity-80 transition-opacity text-white"
                         style={{ background: singleSelected.color }}
                       >
@@ -940,9 +946,16 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
-                  {/* Left: detail panel */}
+                  {/* Left: detail panel — only shown when exactly one MLA is selected */}
                   <div className="w-[190px] flex-shrink-0 overflow-y-auto p-2.5 border-r border-border/30 custom-scrollbar">
-                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
+                    {singleSelected ? (
+                      <MinisterDetailPanel minister={singleSelected} data={ministerData} />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-2">
+                        <Users className="h-8 w-8 text-muted-foreground/30" />
+                        <p className="text-[10px] text-muted-foreground italic">{selectedMinisters.length} MLAs selected.<br />Select only one to see details.</p>
+                      </div>
+                    )}
                   </div>
                   {/* Right: map */}
                   <div className="flex-1 min-w-0">

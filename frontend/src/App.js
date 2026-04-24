@@ -57,6 +57,7 @@ const PageLoader = () => (
 import { NotificationProvider } from './context/NotificationContext';
 import { InstagramCacheProvider } from './contexts/InstagramCacheContext';
 import { RbacProvider } from './contexts/RbacContext';
+import { PoliticianNavigationProvider } from './contexts/PoliticianNavigationContext';
 import './App.css';
 
 function App() {
@@ -75,7 +76,9 @@ function App() {
                     path="/"
                     element={
                       <ProtectedRoute>
-                        <Layout />
+                        <PoliticianNavigationProvider>
+                          <Layout />
+                        </PoliticianNavigationProvider>
                       </ProtectedRoute>
                     }
                   >

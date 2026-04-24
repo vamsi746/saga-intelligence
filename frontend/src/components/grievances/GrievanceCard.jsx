@@ -380,21 +380,28 @@ const MediaGrid = ({ media, getProxiedMediaUrl, onAction, grievance }) => {
 
     const renderItem = (item, index, className = '') => {
         const isVideo = item.type === 'video' || item.type === 'animated_gif';
-        const src = getProxiedMediaUrl?.(item.url || item.preview) || item.url || item.preview;
-        const poster = getProxiedMediaUrl?.(item.preview || item.url) || item.preview || item.url;
+        const src = getProxiedMediaUrl?.(item.s3_url || item.url || item.preview) || item.url || item.preview;
+        const poster = getProxiedMediaUrl?.(item.s3_preview || item.preview || item.url) || item.preview || item.url;
         return (
             <div key={index} className={cn('relative overflow-hidden cursor-pointer bg-slate-100', className)}
                 onClick={(e) => { e.stopPropagation(); onAction?.('view_media', { grievance, media: { type: item.type, url: item.url, video_url: item.url, preview_url: item.preview } }); }}>
                 {isVideo ? (
                     <>
-                        <img src={poster} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                        <img src={poster} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.src = ''; e.target.className = 'hidden'; }} />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                             <div className="bg-black/60 rounded-full p-3 backdrop-blur-sm border border-white/30"><Play className="h-5 w-5 text-white fill-white" /></div>
                         </div>
                         {item.type === 'animated_gif' && <span className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">GIF</span>}
                     </>
                 ) : (
-                    <img src={src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => {
+                        // Show a placeholder instead of hiding
+                        e.target.onerror = null;
+                        e.target.style.objectFit = 'contain';
+                        e.target.style.background = '#f1f5f9';
+                        e.target.style.padding = '2rem';
+                        e.target.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>');
+                    }} />
                 )}
             </div>
         );
@@ -630,18 +637,24 @@ const FacebookMediaGrid = ({ media, getProxiedMediaUrl, onAction, grievance }) =
     const count = normalized.length;
     const renderFBItem = (item, index, className = '') => {
         const isVideo = item.type === 'video' || item.type === 'animated_gif';
-        const src = getProxiedMediaUrl?.(item.url || item.preview) || item.url || item.preview;
-        const poster = getProxiedMediaUrl?.(item.preview || item.url) || item.preview || item.url;
+        const src = getProxiedMediaUrl?.(item.s3_url || item.url || item.preview) || item.url || item.preview;
+        const poster = getProxiedMediaUrl?.(item.s3_preview || item.preview || item.url) || item.preview || item.url;
         return (
             <div key={index} className={cn('relative overflow-hidden cursor-pointer bg-slate-100', className)}
                 onClick={(e) => { e.stopPropagation(); onAction?.('view_media', { grievance, media: { type: item.type, url: item.url, video_url: item.url, preview_url: item.preview } }); }}>
                 {isVideo ? (
                     <>
-                        <img src={poster} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                        <img src={poster} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.src = ''; e.target.className = 'hidden'; }} />
                         <div className="absolute inset-0 flex items-center justify-center"><div className="bg-black/50 rounded-full p-4"><Play className="h-6 w-6 text-white fill-white" /></div></div>
                     </>
                 ) : (
-                    <img src={src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <img src={src} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.style.objectFit = 'contain';
+                        e.target.style.background = '#f1f5f9';
+                        e.target.style.padding = '2rem';
+                        e.target.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>');
+                    }} />
                 )}
             </div>
         );

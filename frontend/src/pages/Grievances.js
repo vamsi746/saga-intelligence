@@ -45,7 +45,8 @@ import { SuggestionReports } from '../components/grievances/SuggestionReports';
 import GrievanceAnalysisModal from '../components/grievances/GrievanceAnalysisModal';
 import { useRbac } from '../contexts/RbacContext';
 import { buildKeywordList, scoreRelevance } from '../utils/keywordService';
-import { TOP_10_MINISTERS } from '../data/telanganaMinistersData';
+import { TOP_10_MINISTERS, getMinisterById, getMinisterInitials } from '../data/telanganaMinistersData';
+import { MlaAnalyticsSummary } from '../components/grievances/MlaAnalyticsSummary';
 /* ═══════════════════════════════════════════════════════════════ */
 /*                       MAIN COMPONENT                          */
 /* ═══════════════════════════════════════════════════════════════ */
@@ -71,11 +72,13 @@ const Grievances = () => {
 
     const getProxiedMediaUrl = useCallback((rawUrl) => {
         if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+        // Already a local/backend URL — no proxy needed
         if (rawUrl.startsWith('/') || rawUrl.startsWith(BACKEND_URL)) return rawUrl;
-        if (rawUrl.includes('video.twimg.com') || rawUrl.includes('pbs.twimg.com')) {
-            return `${BACKEND_URL}/api/media/stream?url=${encodeURIComponent(rawUrl)}`;
-        }
-        return rawUrl;
+        // S3 URLs are directly accessible — no proxy needed
+        if (rawUrl.includes('amazonaws.com')) return rawUrl;
+        // Proxy all external media (Twitter images/videos, Facebook CDN, etc.)
+        // This ensures proper CORS headers and avoids hotlink blocks.
+        return `${BACKEND_URL}/api/media/stream?url=${encodeURIComponent(rawUrl)}`;
     }, [BACKEND_URL]);
 
     const triggerBlobDownload = useCallback(async (url, filename) => {
@@ -346,10 +349,33 @@ const Grievances = () => {
         const id = searchParams.get('politician_id');
         const name = searchParams.get('politician_name');
         const role = searchParams.get('politician_role');
-        const constituency = searchParams.get('location') || '';
+        // politician_constituency is the preferred param; fall back to 'location' for older URLs
+        const constituency = searchParams.get('politician_constituency') || searchParams.get('location') || '';
+        const entityType = searchParams.get('entity_type') || 'mla';
         if (!id && !name) return null;
-        return { id, name, shortName: name, role: role || 'MLA', constituency };
+        return { id, name, shortName: name, role: role || 'MLA', constituency, entityType };
     }, [searchParams]);
+
+    // Full politician record from local data (for image, color, activityScore, etc.)
+    const politicianData = useMemo(
+        () => (politicianContext?.id ? getMinisterById(politicianContext.id) : null),
+        [politicianContext]
+    );
+
+    // Compute analytics from already-fetched grievances (no extra API call)
+    const mlaAnalytics = useMemo(() => {
+        if (!politicianContext || grievances.length === 0) return null;
+        const sentiments = { positive: 0, neutral: 0, negative: 0 };
+        const topics = {};
+        grievances.forEach(g => {
+            const s = g.analysis?.sentiment;
+            if (s && s in sentiments) sentiments[s]++;
+            const t = g.analysis?.grievance_type || g.analysis?.category;
+            if (t && t.trim()) topics[t.trim()] = (topics[t.trim()] || 0) + 1;
+        });
+        const topTopics = Object.entries(topics).sort((a, b) => b[1] - a[1]).slice(0, 4);
+        return { total: grievances.length, sentiments, topTopics };
+    }, [politicianContext, grievances]);
 
     // MLA keyword management state — resets on politician change, persists for UI toggles
     const prevPoliticianIdRef = useRef(null);
@@ -373,15 +399,24 @@ const Grievances = () => {
         [mlaModeKeywords, disabledKeywordIds]
     );
 
-    // Filters //
+    // ─── Filters ───────────────────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
     const [platformFilter, setPlatformFilter] = useState('all');
     const [dateRange, setDateRange] = useState({ from: null, to: null });
     const [locationFilter, setLocationFilter] = useState(() => searchParams.get('location') || null);
 
+    // normalizeTopicFilterLabel must be defined before topicFilter useState (used in initializer)
+    const normalizeTopicFilterLabel = useCallback((topic) => {
+        const raw = String(topic || '').trim();
+        if (!raw) return null;
+        const normalized = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (normalized === 'govt praise' || normalized === 'government praise' || normalized === 'general praise' || normalized === 'general complaint') {
+            return 'General Complaint';
+        }
+        return raw;
+    }, []);
 
-
-    // Top Navbar Filters //
+    // ─── Top Navbar Filters — declared before showTopMlaGrid to avoid TDZ ──────
     const [selectedHandle, setSelectedHandle] = useState(() => searchParams.get('posted_by') || searchParams.get('handle') || null);
     const [sentimentFilter, setSentimentFilter] = useState(() => searchParams.get('sentiment') || null);
     const [topicFilter, setTopicFilter] = useState(() => normalizeTopicFilterLabel(searchParams.get('grievance_type')));
@@ -389,19 +424,14 @@ const Grievances = () => {
     const [navbarPlatform, setNavbarPlatform] = useState('all');
     const [navbarStatus, setNavbarStatus] = useState('total');
 
-    const showTopMlaGrid = !politicianContext
-        && activeTab === 'all'
-        && navbarStatus === 'total'
-        && platformFilter === 'all'
-        && navbarPlatform === 'all'
-        && !selectedHandle
-        && !sentimentFilter
-        && !topicFilter
-        && !analysisCategoryFilter
-        && !locationFilter
-        && !debouncedSearch
-        && !dateRange.from
-        && !dateRange.to;
+    // Debounce search state — must be before showTopMlaGrid
+    const searchTimerRef = useRef(null);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // ─── Derived display flags — all deps declared above ──────────────────────
+    // Top 10 MLA Watch Grid is disabled — default view shows all posts.
+    // When a specific politician is selected (politicianContext), filtered data is shown.
+    const showTopMlaGrid = false;
 
     const topMlaGridFilters = useMemo(() => ({}), []);
 
@@ -433,15 +463,6 @@ const Grievances = () => {
             setNavbarStatus(allowedNavbarStatuses[0]);
         }
     }, [allowedNavbarStatuses, navbarStatus]);
-    const normalizeTopicFilterLabel = useCallback((topic) => {
-        const raw = String(topic || '').trim();
-        if (!raw) return null;
-        const normalized = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-        if (normalized === 'govt praise' || normalized === 'government praise' || normalized === 'general praise' || normalized === 'general complaint') {
-            return 'General Complaint';
-        }
-        return raw;
-    }, []);
 
     const mapTopicFilterToApi = useCallback((topic) => {
         const normalizedTopic = normalizeTopicFilterLabel(topic);
@@ -449,7 +470,6 @@ const Grievances = () => {
         return normalizedTopic;
     }, [normalizeTopicFilterLabel]);
 
-    // ...existing code...
     const GRIEVANCE_TOPICS = [
         'Political Criticism', 'Hate Speech', 'Public Complaint', 'Corruption Complaint',
         'General Complaint', 'Traffic Complaint', 'Public Nuisance', 'Road & Infrastructure',
@@ -459,10 +479,6 @@ const Grievances = () => {
     const [openSReportCode, setOpenSReportCode] = useState('');
     const [openCReportCode, setOpenCReportCode] = useState('');
     const [actionedGrievanceIds, setActionedGrievanceIds] = useState([]);
-
-    // Debounce search
-    const searchTimerRef = useRef(null);
-    const [debouncedSearch, setDebouncedSearch] = useState('');
 
     const splitPaneRef = useRef(null);
 
@@ -509,11 +525,16 @@ const Grievances = () => {
     // Keep filter state in sync when URL query params change (e.g. map redirection).
     useEffect(() => {
         const urlSearch = searchParams.get('search') || '';
-        const urlLocation = searchParams.get('location') || null;
         const urlSentiment = searchParams.get('sentiment') || null;
         const urlHandle = searchParams.get('posted_by') || searchParams.get('handle') || null;
         const urlTopic = normalizeTopicFilterLabel(searchParams.get('grievance_type'));
         const urlAnalysisCategory = searchParams.get('analysis_category') || null;
+
+        // In politician mode the 'location' param is the constituency, not a user-applied filter.
+        // Using politician_constituency for new navigations; 'location' is a legacy fallback.
+        // Either way, skip setting locationFilter when a politician is active.
+        const hasPoliticianId = !!searchParams.get('politician_id');
+        const urlLocation = hasPoliticianId ? null : (searchParams.get('location') || null);
 
         setSearchQuery(urlSearch);
         setLocationFilter(urlLocation);
@@ -701,13 +722,14 @@ const Grievances = () => {
                         .catch(() => ({ data: { grievances: [] } }))
                 );
 
-            // Constituency fetch (indirect mentions)
+            // Constituency fetch — supplementary signal only.
+            // Reduced limit (20) because location-only matches are the main source of noise.
             const constReq = politicianContext.constituency
                 ? api.get('/grievances', {
                     params: {
                         location_city: politicianContext.constituency.toLowerCase(),
                         location: politicianContext.constituency.toLowerCase(),
-                        limit: 30,
+                        limit: 20,
                         ...commonParams,
                     },
                 }).catch(() => ({ data: { grievances: [] } }))
@@ -727,7 +749,8 @@ const Grievances = () => {
                 });
             });
 
-            // Relevance scoring and sorting
+            // Relevance scoring: primary keyword hits (3pts) > constituency (2pts) > alias (1pt)
+            const primaryKeywords = activeKws.filter(k => k.type === 'primary');
             const scored = merged.map(g => {
                 const text = [
                     g.content?.full_text,
@@ -738,10 +761,34 @@ const Grievances = () => {
                 ].filter(Boolean).join(' ');
                 return { ...g, _relevanceScore: scoreRelevance(text, activeKws) };
             });
-            scored.sort((a, b) => b._relevanceScore - a._relevanceScore);
 
-            setGrievances(scored);
-            setPagination({ hasMore: false, nextCursor: null, total: scored.length });
+            // ── Two-stage quality gate ──────────────────────────────────────────
+            // Stage 1: Drop anything with zero keyword hits (pure noise).
+            // Stage 2: Drop constituency-location-only matches that don't mention
+            //          the MLA by name — these are the biggest source of irrelevant
+            //          content (e.g. any post from Madhira city, not about the MLA).
+            const relevant = scored.filter(g => {
+                if (g._relevanceScore <= 0) return false;
+                const textLower = [
+                    g.content?.full_text,
+                    g.content?.text,
+                    g.posted_by?.display_name,
+                ].filter(Boolean).join(' ').toLowerCase();
+                const hasPrimaryHit = primaryKeywords.some(k => textLower.includes(k.term.toLowerCase()));
+                // If score is only from constituency match (≤2 pts) and no primary name found → drop
+                if (!hasPrimaryHit && g._relevanceScore <= 2) return false;
+                return true;
+            });
+
+            // Sort by relevance first, then by most recent date
+            relevant.sort((a, b) =>
+                b._relevanceScore !== a._relevanceScore
+                    ? b._relevanceScore - a._relevanceScore
+                    : new Date(b.post_date) - new Date(a.post_date)
+            );
+
+            setGrievances(relevant);
+            setPagination({ hasMore: false, nextCursor: null, total: relevant.length });
         } catch (err) {
             if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') {
                 console.error('[MLA mode] Failed to fetch politician grievances', err);
@@ -1377,7 +1424,9 @@ const Grievances = () => {
     const isReportsTab = navbarStatus === 'reports';
 
     const displayedGrievances = useMemo(() => {
-        if (!locationFilter) return grievances;
+        // In politician mode, fetchPoliticianGrievances already handles constituency-based
+        // filtering server-side. Skip client-side location narrowing to avoid double-filtering.
+        if (!locationFilter || politicianContext) return grievances;
 
         let target = String(locationFilter).trim().toLowerCase();
         if (!target) return grievances;
@@ -1454,8 +1503,24 @@ const Grievances = () => {
                         {/* ── Header Row ── */}
                         <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-100">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-100 rounded-lg">
-                                    <Users className="h-4 w-4 text-indigo-600" />
+                                {/* Politician avatar */}
+                                <div className="relative shrink-0">
+                                    {politicianData?.image ? (
+                                        <img
+                                            src={politicianData.image}
+                                            alt={politicianContext.name}
+                                            className="h-11 w-11 rounded-full object-cover object-top ring-2 ring-indigo-200 shadow-sm"
+                                            onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+                                        />
+                                    ) : null}
+                                    <div
+                                        className="h-11 w-11 rounded-full bg-indigo-600 text-white font-bold text-sm items-center justify-center ring-2 ring-indigo-200 shadow-sm"
+                                        style={{ display: politicianData?.image ? 'none' : 'flex' }}
+                                    >
+                                        {getMinisterInitials(politicianContext.name)}
+                                    </div>
+                                    {/* Activity indicator dot */}
+                                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-white" title="Active monitoring" />
                                 </div>
                                 <div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1468,6 +1533,9 @@ const Grievances = () => {
                                                 <MapPin className="h-2.5 w-2.5" />
                                                 {politicianContext.constituency.charAt(0).toUpperCase() + politicianContext.constituency.slice(1)}
                                             </span>
+                                        )}
+                                        {politicianData?.department && (
+                                            <span className="text-[10px] text-slate-400 hidden sm:inline">· {politicianData.department}</span>
                                         )}
                                     </div>
                                     <p className="text-[10px] text-indigo-500 mt-0.5">
@@ -1569,6 +1637,15 @@ const Grievances = () => {
                     </div>
                 );
             })()}
+
+            {/* ─── MLA Analytics Summary ─── */}
+            {politicianContext && !loading && (
+                <MlaAnalyticsSummary
+                    analytics={mlaAnalytics}
+                    politician={politicianData || politicianContext}
+                    loading={loading}
+                />
+            )}
 
             {/* ─── Page Header ─── */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2 py-4">
@@ -1847,25 +1924,57 @@ const Grievances = () => {
                                         <p className="text-sm text-muted-foreground">Loading grievances...</p>
                                     </div>
                                 ) : grievances.length === 0 ? (
-                                    <div className="text-center p-12 bg-white rounded-lg border-2 border-dashed border-slate-200">
-                                        <FileText className="h-12 w-12 mx-auto text-slate-300 mb-3" />
-                                        <h3 className="text-sm font-semibold text-slate-900">No grievances found</h3>
-                                        <p className="mt-1 text-sm text-slate-500">
-                                            {hasActiveFilters
-                                                ? 'Try adjusting your filters or search terms.'
-                                                : 'Add source accounts and fetch grievances to get started.'}
-                                        </p>
-                                        {hasActiveFilters && (
-                                            <Button variant="outline" size="sm" onClick={clearFilters} className="mt-3">
-                                                Clear Filters
+                                    politicianContext ? (
+                                        <div className="text-center p-12 bg-indigo-50 rounded-xl border-2 border-dashed border-indigo-200">
+                                            {politicianData?.image ? (
+                                                <img
+                                                    src={politicianData.image}
+                                                    alt={politicianContext.name}
+                                                    className="h-16 w-16 rounded-full object-cover object-top mx-auto mb-3 ring-2 ring-indigo-200 opacity-60"
+                                                />
+                                            ) : (
+                                                <Users className="h-12 w-12 mx-auto text-indigo-300 mb-3" />
+                                            )}
+                                            <h3 className="text-sm font-semibold text-slate-900">
+                                                No posts found for {politicianContext.name}
+                                            </h3>
+                                            <p className="mt-1 text-sm text-slate-500">
+                                                Try enabling paused keywords or adding new ones using the Keywords panel above.
+                                            </p>
+                                            <Button
+                                                variant="outline" size="sm"
+                                                onClick={() => setShowKeywordEditor(true)}
+                                                className="mt-3 gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+                                            >
+                                                <Tag className="h-3.5 w-3.5" />
+                                                Manage Keywords
                                             </Button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center p-12 bg-white rounded-lg border-2 border-dashed border-slate-200">
+                                            <FileText className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+                                            <h3 className="text-sm font-semibold text-slate-900">No grievances found</h3>
+                                            <p className="mt-1 text-sm text-slate-500">
+                                                {hasActiveFilters
+                                                    ? 'Try adjusting your filters or search terms.'
+                                                    : 'Add source accounts and fetch grievances to get started.'}
+                                            </p>
+                                            {hasActiveFilters && (
+                                                <Button variant="outline" size="sm" onClick={clearFilters} className="mt-3">
+                                                    Clear Filters
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )
                                 ) : (
                                     <div className="space-y-4">
                                         {/* Results summary */}
                                         <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                                            <span>Showing {displayedGrievances.length}{effectiveTotal ? ` of ${effectiveTotal}` : ''} results</span>
+                                            <span>
+                                                {politicianContext
+                                                    ? `${displayedGrievances.length} posts for ${politicianContext.name}`
+                                                    : `Showing ${displayedGrievances.length}${effectiveTotal ? ` of ${effectiveTotal}` : ''} results`}
+                                            </span>
                                         </div>
 
                                         {displayedGrievances.map((grievance) => (

@@ -1,24 +1,33 @@
 /**
- * Builds a URL to the grievances page pre-filtered for a specific politician.
- * Uses search + location as the primary filter mechanism since the grievances
- * API supports both params without requiring a politician_id foreign key.
+ * Builds a URL to the grievances page pre-filtered for a specific entity
+ * (MLA, MP, or any future entity type).
+ *
+ * Entity shape:
+ *   MLA/Minister: { id, name, shortName, role, constituency, entityType? }
+ *   MP (future):  { id, name, shortName, role: 'MP', constituency, entityType: 'mp' }
+ *
+ * Uses politician_constituency instead of location so the Grievances page
+ * doesn't confuse it with a user-applied location filter.
  */
-export const buildGrievancesUrl = (politician) => {
-  if (!politician) return '/grievances';
+export const buildGrievancesUrl = (entity) => {
+  if (!entity) return '/grievances';
 
   const params = new URLSearchParams();
 
-  // politician context params (read back in Grievances.js to show the banner)
-  params.set('politician_id', politician.id || '');
-  params.set('politician_name', politician.name || politician.shortName || '');
-  params.set('politician_role', politician.role || 'MLA');
+  // Entity identity — read back in Grievances.js to activate politician mode
+  params.set('politician_id', entity.id || '');
+  params.set('politician_name', entity.name || entity.shortName || '');
+  params.set('politician_role', entity.role || 'MLA');
 
-  // pre-fill the search filter with the politician's short name
-  const searchTerm = politician.shortName || politician.name || '';
-  if (searchTerm) params.set('search', searchTerm);
+  // Constituency goes through a dedicated param so it's not treated as locationFilter
+  if (entity.constituency) {
+    params.set('politician_constituency', entity.constituency.toLowerCase());
+  }
 
-  // pre-fill location with constituency
-  if (politician.constituency) params.set('location', politician.constituency.toLowerCase());
+  // Optional entity type for future non-MLA entities (MPs, councillors, etc.)
+  if (entity.entityType && entity.entityType !== 'mla') {
+    params.set('entity_type', entity.entityType);
+  }
 
   return `/grievances?${params.toString()}`;
 };
