@@ -21,6 +21,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { toast } from 'sonner';
 import Sources from './Sources';
 import AccessManagement from './AccessManagement';
+import Transcribe from './Transcribe';
 import PolicyManager from '../components/PolicyManager';
 import { Badge } from '../components/ui/badge';
 import RichTextEditor from '../components/RichTextEditor';
@@ -150,7 +151,9 @@ const Settings = () => {
   const [editingHtml, setEditingHtml] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [thresholdsLoading, setThresholdsLoading] = useState(false);
-  const validTabs = ['general', 'sources', 'keywords', 'templates', 'access', 'policies'];
+
+
+  const validTabs = ['general', 'sources', 'keywords', 'templates', 'access', 'policies', 'transcribe'];
   const tabFromUrl = searchParams.get('tab');
   const initialTab = validTabs.includes(tabFromUrl) ? tabFromUrl : 'general';
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -614,6 +617,7 @@ const Settings = () => {
           <TabsTrigger value="templates" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Report Templates</TabsTrigger>
           <TabsTrigger value="access" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Access Management</TabsTrigger>
           <TabsTrigger value="policies" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Policy Manager</TabsTrigger>
+          <TabsTrigger value="transcribe" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Transcribe</TabsTrigger>
         </TabsList>
 
       {/* Unsaved changes dialog */}
@@ -1293,6 +1297,11 @@ const Settings = () => {
 
         <TabsContent value="policies" className="mt-2">
           <PolicyManager />
+        </TabsContent>
+
+        {/* ═══ Transcribe Tab ═══ */}
+        <TabsContent value="transcribe" className="mt-2">
+          <Transcribe />
         </TabsContent>
 
         {/* Template Preview Dialog */}

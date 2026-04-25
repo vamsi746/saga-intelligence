@@ -70,6 +70,7 @@ app.use('/api/templates', require('./routes/templatesRoutes'));
 app.use('/api/poi', require('./routes/poiRoutes'));
 app.use('/api/telegram', require('./routes/telegramRoutes'));
 app.use('/api/master-calendar', require('./routes/masterCalendarRoutes'));
+app.use('/api/media-transcribe', require('./routes/transcribeRoutes'));
 
 
 app.get('/api/verify-v2', (req, res) => res.json({ status: 'ok', version: 'v2-diagnostic', timestamp: new Date() }));
