@@ -4,9 +4,52 @@ const os = require('os');
 const { execSync } = require('child_process');
 const axios = require('axios');
 
-const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
 const SARVAM_BASE = 'https://api.sarvam.ai/speech-to-text/job/v1';
-const SARVAM_HEADERS = { 'api-subscription-key': SARVAM_API_KEY, 'Content-Type': 'application/json' };
+
+function getSarvamApiKey() {
+  return (
+    process.env.SARVAM_API_KEY ||
+    process.env.SARVAM_API_SUBSCRIPTION_KEY ||
+    process.env.SARVAM_SUBSCRIPTION_KEY ||
+    ''
+  ).trim();
+}
+
+function getSarvamHeaders() {
+  const apiKey = getSarvamApiKey();
+  return {
+    'api-subscription-key': apiKey,
+    'Content-Type': 'application/json',
+  };
+}
+
+function buildTranscribeError(err) {
+  const status = err?.response?.status;
+  const detail =
+    err?.response?.data?.error?.message ||
+    err?.response?.data?.message ||
+    err?.response?.data?.detail ||
+    err?.message;
+
+  if (!getSarvamApiKey()) {
+    return {
+      statusCode: 503,
+      detail: 'Transcription service is not configured. Set SARVAM_API_KEY on the backend server.',
+    };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      statusCode: 502,
+      detail: 'Sarvam API authentication failed. Check the backend SARVAM_API_KEY configuration.',
+    };
+  }
+
+  return {
+    statusCode: 500,
+    detail: detail || 'Transcription failed',
+  };
+}
 
 // Convert any audio/video to 16kHz mono WAV
 function convertToWav(inputPath, outputPath) {
@@ -46,12 +89,17 @@ function splitWav(wavPath, maxSecs) {
 // Full Sarvam batch flow for a single WAV chunk
 async function batchTranscribeChunk(wavPath, language) {
   const filename = path.basename(wavPath);
+  const sarvamHeaders = getSarvamHeaders();
+
+  if (!sarvamHeaders['api-subscription-key']) {
+    throw new Error('Transcription service is not configured. Set SARVAM_API_KEY on the backend server.');
+  }
 
   // 1. Create job
   const { data: jobData } = await axios.post(
     SARVAM_BASE,
     { job_parameters: { language_code: language || 'unknown', model: 'saarika:v2.5', with_timestamps: false } },
-    { headers: SARVAM_HEADERS, timeout: 30000 }
+    { headers: sarvamHeaders, timeout: 30000 }
   );
   const jobId = jobData.job_id;
 
@@ -59,7 +107,7 @@ async function batchTranscribeChunk(wavPath, language) {
   const { data: uploadData } = await axios.post(
     `${SARVAM_BASE}/upload-files`,
     { job_id: jobId, files: [filename] },
-    { headers: SARVAM_HEADERS, timeout: 30000 }
+    { headers: sarvamHeaders, timeout: 30000 }
   );
   const presignedUrl = uploadData.upload_urls[filename].file_url;
 
@@ -75,7 +123,7 @@ async function batchTranscribeChunk(wavPath, language) {
   await axios.post(
     `${SARVAM_BASE}/start`,
     { job_id: jobId },
-    { headers: SARVAM_HEADERS, timeout: 30000 }
+    { headers: sarvamHeaders, timeout: 30000 }
   );
 
   // 5. Poll until completed or failed (max 10 minutes)
@@ -85,7 +133,7 @@ async function batchTranscribeChunk(wavPath, language) {
     await new Promise(r => setTimeout(r, 5000));
     const { data: statusData } = await axios.get(
       `${SARVAM_BASE}/${jobId}`,
-      { headers: SARVAM_HEADERS, timeout: 30000 }
+      { headers: sarvamHeaders, timeout: 30000 }
     );
     jobState = statusData.job_state;
     if (jobState === 'Completed') break;
@@ -96,7 +144,7 @@ async function batchTranscribeChunk(wavPath, language) {
   // 6. Get download URL for the result
   const { data: dlData } = await axios.get(
     `${SARVAM_BASE}/${jobId}/download`,
-    { headers: SARVAM_HEADERS, timeout: 30000 }
+    { headers: sarvamHeaders, timeout: 30000 }
   );
   const downloadUrl = dlData.download_urls[filename].file_url;
 
@@ -108,6 +156,13 @@ async function batchTranscribeChunk(wavPath, language) {
 const transcribeMedia = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  if (!getSarvamApiKey()) {
+    return res.status(503).json({
+      message: 'Transcription service is not configured',
+      detail: 'Set SARVAM_API_KEY on the backend server and restart the backend.',
+    });
   }
 
   const tmpDir = os.tmpdir();
@@ -134,10 +189,11 @@ const transcribeMedia = async (req, res) => {
 
     return res.json({ transcript: transcripts.join(' ').trim() });
   } catch (err) {
+    const handled = buildTranscribeError(err);
     console.error('[Transcribe] Error:', err.response?.data || err.message);
-    return res.status(500).json({
+    return res.status(handled.statusCode).json({
       message: 'Transcription failed',
-      detail: err.response?.data?.error?.message || err.response?.data?.message || err.message,
+      detail: handled.detail,
     });
   } finally {
     [inputPath, wavPath, ...chunkPaths].forEach(f => {
