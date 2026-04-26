@@ -1042,6 +1042,7 @@ const upsertFacebookGrievancesForSource = async (source, startDate = null, endDa
                 complaint_code: await generateComplaintCode(),
                 tweet_id: canonicalPostId,
                 tagged_account: source.handle,
+                tagged_account_normalized: String(source.handle || '').replace(/^@/, '').toLowerCase(),
                 grievance_source_id: source.id,
                 platform: 'facebook',
                 posted_by: {
@@ -1108,6 +1109,7 @@ const upsertFacebookGrievancesForSource = async (source, startDate = null, endDa
                 complaint_code: await generateComplaintCode(),
                 tweet_id: canonicalCommentId,
                 tagged_account: source.handle,
+                tagged_account_normalized: String(source.handle || '').replace(/^@/, '').toLowerCase(),
                 grievance_source_id: source.id,
                 platform: 'facebook',
                 posted_by: {

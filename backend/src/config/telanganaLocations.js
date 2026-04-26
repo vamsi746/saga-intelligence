@@ -80,103 +80,118 @@ const TELANGANA_CONSTITUENCIES = [
     'asifabad', 'sirpur', 'kaghaznagar'
 ];
 
+// ─── TOWN TO CONSTITUENCY MAPPING ───────────────────────────────────────────
+const TOWN_TO_CONSTITUENCY = {
+    // Hyderabad area
+    'secunderabad': 'Secunderabad',
+    'begumpet': 'Sanathnagar',
+    'ameerpet': 'Sanathnagar',
+    'banjara hills': 'Jubilee Hills',
+    'jubilee hills': 'Jubilee Hills',
+    'madhapur': 'Jubilee Hills',
+    'gachibowli': 'Serilingampally',
+    'kukatpally': 'Kukatpally',
+    'miyapur': 'Serilingampally',
+    'dilsukhnagar': 'LB Nagar',
+    'uppal': 'Uppal',
+    
+    // Districts
+    'kodangal': 'Kodangal',
+    'bomraspet': 'Kodangal',
+    'doultabad': 'Kodangal',
+    'kosgi': 'Kodangal',
+    'maddur': 'Kodangal',
+    
+    'narayanpet': 'Narayanpet',
+    'utkoor': 'Narayanpet',
+    'marikal': 'Narayanpet',
+    'damaragidda': 'Narayanpet',
+    
+    'mahabubnagar': 'Mahbubnagar',
+    'palamoor': 'Mahbubnagar',
+    
+    'jadcherla': 'Jadcherla',
+    'nawabpet': 'Jadcherla',
+    
+    'devarkadra': 'Devarkadra',
+    'koilkonda': 'Devarkadra',
+    'addakal': 'Devarkadra',
+    
+    'makthal': 'Makthal',
+    'maganoor': 'Makthal',
+    'krishna mandal': 'Makthal',
+    
+    'shadnagar': 'Shadnagar',
+    'farooqnagar': 'Shadnagar',
+    'kothur': 'Shadnagar',
+    'kondurg': 'Shadnagar',
+    
+    'sircilla': 'Sircilla',
+    'gajwel': 'Gajwel',
+    'siddipet': 'Siddipet',
+    'dubbak': 'Dubbak',
+    'husnabad': 'Husnabad',
+    
+    'warangal': 'Warangal East',
+    'hanamkonda': 'Warangal West',
+    'kazipet': 'Warangal West',
+    
+    'karimnagar': 'Karimnagar',
+    'huzurabad': 'Huzurabad',
+    'choppadandi': 'Choppadandi',
+    'manakondur': 'Manakondur',
+    
+    'nalgonda': 'Nalgonda',
+    'munugode': 'Munugode',
+    'devarakonda': 'Devarakonda',
+    'miryalaguda': 'Miryalaguda',
+    
+    'khammam': 'Khammam',
+    'palair': 'Palair',
+    'madhira': 'Madhira',
+    'wyra': 'Wyra',
+    'sathupalli': 'Sathupalli',
+    
+    'suryapet': 'Suryapet',
+    'kodad': 'Kodad',
+    'huzurnagar': 'Huzurnagar',
+    
+    'nizamabad': 'Nizamabad Urban',
+    'bodhan': 'Bodhan',
+    'armoor': 'Armoor',
+    
+    'kamareddy': 'Kamareddy',
+    'banswada': 'Banswada',
+    'yellareddy': 'Yellareddy',
+    
+    'mancherial': 'Mancherial',
+    'bellampalli': 'Bellampalli',
+    'chennur': 'Chennur',
+    
+    'adilabad': 'Adilabad',
+    'nirmal': 'Nirmal',
+    'bhainsa': 'Mudhole'
+};
+
 // ─── CITIES, TOWNS, MANDALS, VILLAGES & NOTABLE AREAS ───────────────────────
 const TELANGANA_CITIES_AND_VILLAGES = [
+    ...Object.keys(TOWN_TO_CONSTITUENCY),
     // Hyderabad metro area
-    'hyderabad', 'secunderabad', 'begumpet', 'ameerpet', 'banjara hills',
-    'jubilee hills', 'film nagar', 'madhapur', 'gachibowli', 'hitech city',
-    'hitec city', 'kukatpally', 'miyapur', 'kondapur', 'nanakramguda',
-    'raidurg', 'kokapet', 'shamshabad', 'lb nagar', 'dilsukhnagar',
-    'malakpet', 'nampally', 'koti', 'abids', 'charminar', 'mehdipatnam',
-    'tolichowki', 'nacharam', 'uppal', 'kapra', 'malkajgiri', 'alwal',
-    'kompally', 'boduppal', 'ghatkesar', 'amberpet', 'saroornagar',
-    'musheerabad', 'chikkadpally', 'gandipet', 'shamirpet',
-    'patancheru', 'balanagar', 'jeedimetla', 'bollaram',
-    'moosapet', 'erragadda', 'srinagar colony', 'balapur',
-    'nagole', 'hayathnagar', 'vanasthalipuram', 'meerpet',
-
-    // Rangareddy district
-    'rangareddy', 'ranga reddy', 'shadnagar', 'ibrahimpatnam',
-    'chevella', 'tandur', 'maheshwaram', 'kandukur', 'farooqnagar',
-    'kothur', 'shabad', 'rajendranagar', 'serilingampally',
-
-    // Mahabubnagar district & surrounding
-    'mahabubnagar', 'mahbubnagar', 'jadcherla', 'devarkadra', 'makthal',
-    'kodangal', 'narayanpet', 'wanaparthy', 'nagarkurnool', 'kalwakurthy',
-    'achampet', 'kollapur', 'gadwal', 'alampur', 'palem', 'addakal',
-    'koilkonda', 'gandeed', 'utkoor', 'marikal', 'damaragidda', 'narva',
-    'bomraspet', 'doultabad', 'kosgi', 'maddur', 'pebbair', 'gopalpet',
-
-    // Vikarabad district
-    'vikarabad', 'parigi', 'mominpet', 'nawabpet', 'bantaram', 'pudur',
-
-    // Warangal district
-    'warangal', 'hanamkonda', 'kazipet', 'hasanparthy', 'narsampet',
-    'parkal', 'wardhannapet', 'jangaon', 'ghanpur', 'palakurthi',
-
-    // Karimnagar district
-    'karimnagar', 'huzurabad', 'choppadandi', 'manakondur', 'vemulawada',
-    'sircilla', 'jagtial', 'koratla', 'metpally',
-
-    // Nizamabad district
-    'nizamabad', 'bodhan', 'armoor', 'kamareddy', 'yellareddy', 'banswada',
-
-    // Khammam district
-    'khammam', 'kothagudem', 'bhadrachalam', 'yellandu', 'sathupalli',
-    'madhira', 'wyra', 'paloncha', 'manuguru',
-
-    // Nalgonda district
-    'nalgonda', 'miryalaguda', 'devarakonda', 'bhongir', 'suryapet',
-    'kodad', 'huzurnagar', 'nakrekal', 'munugode',
-
-    // Medak / Sangareddy / Siddipet
-    'medak', 'siddipet', 'sangareddy', 'zaheerabad', 'narayankhed',
-    'andole', 'dubbak', 'gajwel', 'husnabad',
-
-    // Adilabad district
-    'adilabad', 'mancherial', 'nirmal', 'bellampalli', 'asifabad',
-    'utnoor', 'mudhole', 'bhainsa', 'luxettipet', 'kaghaznagar',
-    'sirpur', 'boath', 'khanapur',
-
-    // Peddapalli district
-    'peddapalli', 'ramagundam', 'godavarikhani', 'sulthanabad', 'manthani',
-
-    // Mahabubabad district
-    'mahabubabad', 'dornakal', 'thorrur', 'maripeda',
-
-    // Medchal-Malkajgiri
-    'medchal', 'quthbullapur', 'keesara',
-
-    // Notable temples / landmarks
-    'yadagirigutta', 'yadadri', 'basara', 'bhadrachalam temple',
-    'ramappa', 'pillalamarri', 'nagarjuna sagar', 'nagarjunasagar',
-    'srisailam', 'alampur jogulamba',
-
-    // Rivers / projects
-    'musi river', 'godavari', 'krishna', 'kaleshwaram',
-    'jurala', 'singur', 'pochampadu', 'srsp',
-
-    // IT / Industrial
-    'cyberabad', 'mindspace', 'financial district', 'genome valley',
-    'hardware park', 'fab city', 'pharma city', 'pashamylaram',
-
-    // Universities / Institutions
-    'osmania university', 'university of hyderabad', 'jntu hyderabad',
-    'iiit hyderabad', 'iit hyderabad', 'bits hyderabad', 'isb hyderabad',
-    'nalsar', 'nims', 'gandhi hospital', 'kakatiya university',
-    'nit warangal', 'palamuru university',
-
-    // Police commissionerates
-    'hyderabad police', 'cyberabad police', 'rachakonda police',
-    'telangana police', 'telangana dgp',
-
-    // Alternate spellings
-    'mahbubnagar', 'mahaboobnagar', 'warangal city', 'karimnagar city',
-    'nizamabad city', 'khammam city', 'adilabad city',
-    'ranga reddi', 'rangareddi', 'medchal malkajgiri',
-
-    // State references
-    'telangana', 'state of telangana', 'govt of telangana', 'government of telangana',
+    'hyderabad', 'film nagar', 'hitech city', 'hitec city', 'kondapur', 'nanakramguda',
+    'raidurg', 'kokapet', 'shamshabad', 'malakpet', 'nampally', 'koti', 'abids', 'charminar', 'mehdipatnam',
+    'tolichowki', 'nacharam', 'kapra', 'alwal', 'kompally', 'boduppal', 'ghatkesar', 'amberpet', 'saroornagar',
+    'musheerabad', 'chikkadpally', 'gandipet', 'shamirpet', 'patancheru', 'balanagar', 'jeedimetla', 'bollaram',
+    'moosapet', 'erragadda', 'srinagar colony', 'balapur', 'nagole', 'hayathnagar', 'vanasthalipuram', 'meerpet',
+    'shabad', 'rajendranagar', 'serilingampally', 'palem', 'gandeed', 'narva', 'pudur', 'hasanparthy', 'ghanpur',
+    'paloncha', 'manuguru', 'keesara', 'yadagirigutta', 'yadadri', 'basara', 'bhadrachalam temple', 'ramappa',
+    'pillalamarri', 'nagarjuna sagar', 'nagarjunasagar', 'srisailam', 'alampur jogulamba', 'musi river', 'godavari',
+    'krishna mandal', 'krishna river', 'kaleshwaram', 'jurala', 'singur', 'pochampadu', 'srsp', 'cyberabad', 'mindspace', 'financial district',
+    'genome valley', 'hardware park', 'fab city', 'pharma city', 'pashamylaram', 'osmania university',
+    'university of hyderabad', 'jntu hyderabad', 'iiit hyderabad', 'iit hyderabad', 'bits hyderabad', 'isb hyderabad',
+    'nalsar', 'nims', 'gandhi hospital', 'kakatiya university', 'nit warangal', 'palamuru university', 'hyderabad police',
+    'cyberabad police', 'rachakonda police', 'telangana police', 'telangana dgp', 'mahbubnagar', 'mahaboobnagar',
+    'warangal city', 'karimnagar city', 'nizamabad city', 'khammam city', 'adilabad city', 'ranga reddi', 'rangareddi',
+    'medchal malkajgiri', 'telangana', 'state of telangana', 'govt of telangana', 'government of telangana',
     'telangana india', 'telangana state'
 ];
 
@@ -220,11 +235,11 @@ const isTelanganaLocation = (name) => {
     return false;
 };
 
-// Export with backward-compatible aliases
 module.exports = {
     TELANGANA_DISTRICTS,
     TELANGANA_CONSTITUENCIES,
     TELANGANA_CITIES_AND_VILLAGES,
+    TOWN_TO_CONSTITUENCY,
     ALL_TELANGANA_LOCATIONS,
     isTelanganaLocation
 };
