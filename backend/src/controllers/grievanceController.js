@@ -1,5 +1,6 @@
 const GrievanceSource = require('../models/GrievanceSource');
 const Grievance = require('../models/Grievance');
+const { ALL_LEADERS } = require('../config/politicalData');
 const GrievanceSettings = require('../models/GrievanceSettings');
 const grievanceService = require('../services/grievanceService');
 const { extractAndSaveLocation } = require('../services/grievanceService');
@@ -180,6 +181,14 @@ const buildListQuery = (params = {}, options = {}) => {
             { tagged_account_normalized: normalized },
             { 'linked_persons.handle_normalized': normalized }
         ];
+
+        // Resolve handle to person_id to catch secondary handles (e.g. @TelanganaCMO)
+        const leaderMatch = ALL_LEADERS.find(l => 
+            l.handles_normalized && l.handles_normalized.includes(normalized)
+        );
+        if (leaderMatch) {
+            handleOr.push({ 'linked_persons.person_id': leaderMatch.id });
+        }
         if (query.$or) {
             query.$and = [...(query.$and || []), { $or: query.$or }, { $or: handleOr }];
             delete query.$or;

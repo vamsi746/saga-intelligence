@@ -39,6 +39,89 @@ const PLATFORMS = [
 const DRONE_API_KEY_STORAGE = 'blura_yt_api_key';
 // Fallback levels: 0=ReactPlayer, 1=nocookie iframe, 2=standard embed, 3=thumbnail card
 const FALLBACK_LABELS = ['Player (auto)', 'Embed (privacy)', 'Embed (standard)', 'Info card'];
+const buildSentimentBreakdown = (summary) => {
+  const positive = summary?.positive || 0;
+  const neutral = summary?.neutral || 0;
+  const negative = summary?.negative || 0;
+  const total = summary?.total ?? (positive + neutral + negative);
+  const rawSegments = [
+    { key: 'positive', label: '+Ve', value: positive, color: '#10b981', bgClass: 'bg-emerald-500', textClass: 'text-emerald-600' },
+    { key: 'neutral', label: 'Mod..', value: neutral, color: '#f59e0b', bgClass: 'bg-amber-400', textClass: 'text-amber-600' },
+    { key: 'negative', label: '-Ve', value: negative, color: '#ef4444', bgClass: 'bg-red-500', textClass: 'text-red-600' },
+  ];
+
+  return {
+    positive,
+    neutral,
+    negative,
+    total,
+    segments: rawSegments.map((segment) => ({
+      ...segment,
+      percentage: total ? Math.round((segment.value / total) * 100) : 0,
+    })),
+  };
+};
+
+const CompactSentimentBar = ({ summary, accentColor, label }) => {
+  const { positive, neutral, negative, total, segments } = buildSentimentBreakdown(summary);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="w-[104px] shrink-0 rounded-xl border bg-white/95 px-2.5 py-2 shadow-sm"
+          style={{ borderColor: `${accentColor}30` }}
+        >
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Sentiment
+            </span>
+            <span className="text-[9px] font-bold text-slate-800">{total}</span>
+          </div>
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+            {segments.map((segment) => (
+              <div
+                key={segment.key}
+                className={segment.bgClass}
+                style={{ width: `${segment.percentage}%` }}
+                aria-hidden="true"
+              />
+            ))}
+          </div>
+          <div className="mt-1.5 grid grid-cols-3 gap-1 text-center">
+            {segments.map((segment) => (
+              <div key={segment.key} className="space-y-0.5">
+                <p className="text-[7px] font-semibold uppercase tracking-wide text-slate-500">{segment.label}</p>
+                <p className={`text-[9px] font-bold ${segment.textClass}`}>{segment.percentage}%</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700 shadow-lg">
+        <div className="space-y-1">
+          <p className="font-semibold text-slate-900">{label}</p>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />+Ve</span>
+            <span className="font-semibold">{positive} ({segments[0].percentage}%)</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" />Mod.</span>
+            <span className="font-semibold">{neutral} ({segments[1].percentage}%)</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />-Ve</span>
+            <span className="font-semibold">{negative} ({segments[2].percentage}%)</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-3 border-t border-slate-100 pt-1 text-slate-900">
+            <span className="font-medium">Total</span>
+            <span className="font-bold">{total}</span>
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+};
 
 const DroneViewStrip = () => {
   const [title, setTitle] = useState('Drone View');
@@ -430,6 +513,63 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
   );
 
   const selectableCount = activePartyGroup.members.filter((member) => member.selectable).length;
+  const sortedMembers = useMemo(() => {
+    const originalOrder = new Map(activePartyGroup.members.map((member, index) => [member.id, index]));
+
+    return [...activePartyGroup.members].sort((a, b) => {
+      const aPinned = (a.linkedProfile?.id || a.id) === 'revanth-reddy';
+      const bPinned = (b.linkedProfile?.id || b.id) === 'revanth-reddy';
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+
+      const aTotal = Number(memberSentimentMap[a.id]?.total || 0);
+      const bTotal = Number(memberSentimentMap[b.id]?.total || 0);
+      const aHasData = aTotal > 0;
+      const bHasData = bTotal > 0;
+
+      if (aHasData !== bHasData) return aHasData ? -1 : 1;
+      if (aHasData && bHasData && aTotal !== bTotal) return bTotal - aTotal;
+
+      return (originalOrder.get(a.id) || 0) - (originalOrder.get(b.id) || 0);
+    });
+  }, [activePartyGroup.members, memberSentimentMap]);
+
+  useEffect(() => {
+    const membersToFetch = activePartyGroup.members.filter((member) => (
+      member.selectable &&
+      member.constituency &&
+      memberSentimentMap[member.id] == null
+    ));
+
+    if (!membersToFetch.length) return undefined;
+
+    let cancelled = false;
+
+    Promise.all(
+      membersToFetch.map(async (member) => {
+        try {
+          const response = await api.get('/grievances/location-summary', {
+            params: { location_city: member.constituency.toLowerCase() }
+          });
+          return [member.id, response.data || { total: 0, positive: 0, neutral: 0, negative: 0 }];
+        } catch {
+          return [member.id, { total: 0, positive: 0, neutral: 0, negative: 0 }];
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setMemberSentimentMap((prev) => {
+        const next = { ...prev };
+        entries.forEach(([id, summary]) => {
+          next[id] = summary;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePartyGroup, memberSentimentMap]);
 
   return (
     <Card className="border border-border/50 shadow-sm overflow-hidden">
@@ -495,11 +635,13 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
 
       {/* Party-wise MLA grid */}
       <div className="max-h-[380px] overflow-y-auto p-4 custom-scrollbar">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {activePartyGroup.members.map((member) => {
+        <TooltipProvider delayDuration={100}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {sortedMembers.map((member) => {
             const isSelected = selectedIds.has(member.id);
             const isSelectable = member.selectable;
             const linkedProfile = member.linkedProfile;
+            const sentimentSummary = memberSentimentMap[member.id] || { total: 0, positive: 0, neutral: 0, negative: 0 };
             const positionText = member.department
               || (member.role === 'Chief Minister' || member.role === 'Deputy Chief Minister' ? member.role : 'MLA');
 
@@ -509,7 +651,7 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
                 type="button"
                 disabled={!isSelectable}
                 onClick={() => isSelectable && onToggle(linkedProfile)}
-                className={`flex min-h-[220px] flex-col items-center gap-2 rounded-xl border bg-card p-3 text-left transition-all duration-200 relative overflow-hidden ${isSelected
+                className={`flex min-h-[220px] flex-col gap-3 rounded-xl border bg-card p-3 text-left transition-all duration-200 relative overflow-hidden ${isSelected
                   ? 'border-2 shadow-lg scale-[1.02] cursor-pointer'
                   : isSelectable
                     ? 'border-border/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
@@ -518,30 +660,36 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
                 style={isSelected ? { borderColor: member.color, boxShadow: `0 4px 20px ${member.color}25` } : undefined}
               >
 
-                {/* Avatar */}
-                <div className="relative mt-1">
-                  <div
-                    className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all group-hover:ring-4"
-                    style={{ ringColor: member.color, borderColor: member.color }}
-                  >
-                    <Avatar className="w-full h-full">
-                      <AvatarImage
-                        src={member.image}
-                        alt={member.shortName}
-                        className="object-cover object-top"
-                      />
-                      <AvatarFallback
-                        className="text-white text-base font-bold"
-                        style={{ background: member.color }}
-                      >
-                        {getMinisterInitials(member.shortName)}
-                      </AvatarFallback>
-                    </Avatar>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="relative mt-1">
+                    <div
+                      className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all"
+                      style={{ ringColor: member.color, borderColor: member.color }}
+                    >
+                      <Avatar className="w-full h-full">
+                        <AvatarImage
+                          src={member.image}
+                          alt={member.shortName}
+                          className="object-cover object-top"
+                        />
+                        <AvatarFallback
+                          className="text-white text-base font-bold"
+                          style={{ background: member.color }}
+                        >
+                          {getMinisterInitials(member.shortName)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
                   </div>
+                  <CompactSentimentBar
+                    summary={sentimentSummary}
+                    accentColor={member.color}
+                    label={`${member.shortName} sentiment`}
+                  />
                 </div>
 
                 {/* Name */}
-                <div className="w-full text-center">
+                <div className="w-full">
                   <p className="text-[11px] font-bold text-foreground leading-tight line-clamp-2 min-h-[28px]">
                     {member.shortName}
                   </p>
@@ -598,7 +746,8 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
               </button>
             );
           })}
-        </div>
+          </div>
+        </TooltipProvider>
       </div>
 
     </Card>
@@ -631,9 +780,9 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
       </div>
       <div className="flex-1 space-y-0.5">
         {[
-          { label: 'Pos', value: positive, color: '#10b981' },
-          { label: 'Mod', value: neutral, color: '#f59e0b' },
-          { label: 'Neg', value: negative, color: '#ef4444' },
+          { label: '+Ve', value: positive, color: '#10b981' },
+          { label: 'Mod..', value: neutral, color: '#f59e0b' },
+          { label: '-Ve', value: negative, color: '#ef4444' },
         ].map(row => (
           <div key={row.label} className="flex items-center justify-between text-[9px]">
             <div className="flex items-center gap-1">
@@ -714,25 +863,19 @@ const MinisterDetailPanel = ({ minister }) => {
       {/* Stats */}
       <Card className="p-3 border-0 shadow-sm">
         <p className="text-[11px] font-semibold text-foreground mb-2">Grievance Summary</p>
-        {grievancesLoading ? (
-          <div className="flex items-center justify-center h-12">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-1.5">
-            {[
-              { label: 'Total', value: total, bg: 'bg-blue-50', text: 'text-blue-700' },
-              { label: 'Pos', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
-              { label: 'Mod', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
-              { label: 'Neg', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
-            ].map(s => (
-              <div key={s.label} className={`${s.bg} rounded-lg p-2 text-center`}>
-                <div className={`text-base font-bold ${s.text}`}>{s.value}</div>
-                <div className={`text-[9px] ${s.text} opacity-70 font-medium`}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-1.5">
+          {[
+            { label: 'Total', value: total, bg: 'bg-blue-50', text: 'text-blue-700' },
+            { label: '+Ve', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
+            { label: 'Mod..', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
+            { label: '-Ve', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
+          ].map(s => (
+            <div key={s.label} className={`${s.bg} rounded-lg p-2 text-center`}>
+              <div className={`text-base font-bold ${s.text}`}>{s.value}</div>
+              <div className={`text-[9px] ${s.text} opacity-70 font-medium`}>{s.label}</div>
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* Topics */}
@@ -875,15 +1018,15 @@ const Dashboard = () => {
         ].filter(d => d.value > 0);
 
         const sentimentRows = [
-          { key: 'positive', label: 'Pos', value: dist.positive || 0, color: '#10b981', barBg: 'bg-emerald-500', trackBg: 'bg-emerald-100', sentiment: 'positive' },
-          { key: 'medium', label: 'Mod', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
-          { key: 'negative', label: 'Neg', value: dist.negative || 0, color: '#ef4444', barBg: 'bg-red-500', trackBg: 'bg-red-100', sentiment: 'negative' }
+          { key: 'positive', label: '+Ve', value: dist.positive || 0, color: '#10b981', barBg: 'bg-emerald-500', trackBg: 'bg-emerald-100', sentiment: 'positive' },
+          { key: 'medium', label: 'Mod..', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
+          { key: 'negative', label: '-Ve', value: dist.negative || 0, color: '#ef4444', barBg: 'bg-red-500', trackBg: 'bg-red-100', sentiment: 'negative' }
         ];
 
         return (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* ── Tile 1: Sentiment Distribution ── */}
-            <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-4">
+            <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-4 lg:order-2">
               <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 bg-violet-100 rounded-lg">
@@ -944,7 +1087,7 @@ const Dashboard = () => {
             {/* Constituency Map / Minister Detail */}
             {selectedMinister ? (
               /* ── One or more MLAs selected ── */
-              <div className="lg:col-span-8 border border-border/50 rounded-xl overflow-hidden shadow-sm"
+              <div className="lg:col-span-8 lg:order-1 border border-border/50 rounded-xl overflow-hidden shadow-sm"
                 style={{ borderColor: `${selectedMinister.color}40` }}>
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30"
                   style={{ background: `linear-gradient(to right, ${selectedMinister.color}12, transparent)` }}>
@@ -980,7 +1123,7 @@ const Dashboard = () => {
               </div>
             ) : (
               /* ── Default: neutral constituency map ── */
-              <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-8">
+              <Card className="border border-border/50 shadow-sm hover:shadow-md transition-all overflow-hidden lg:col-span-8 lg:order-1">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-border/30">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-slate-100 rounded-lg">

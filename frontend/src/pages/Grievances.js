@@ -851,7 +851,7 @@ const Grievances = () => {
             } else if (platformFilter && platformFilter !== 'all') {
                 params.platform = platformFilter;
             }
-            if (selectedHandle) params.posted_by_handle = selectedHandle;
+            if (selectedHandle) params.handle = selectedHandle;
             if (sentimentFilter) params.sentiment = sentimentFilter;
             if (topicFilter) params.grievance_type = mapTopicFilterToApi(topicFilter);
             if (analysisCategoryFilter) params.analysis_category = analysisCategoryFilter;

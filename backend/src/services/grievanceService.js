@@ -973,6 +973,7 @@ const upsertXGrievancesForSource = async (source, startDate = null, endDate = nu
             complaint_code: await complaintCodeFn(),
             tweet_id: preparedMention.tweet_id,
             tagged_account: source.handle,
+            tagged_account_normalized: String(source.handle || '').replace(/^@/, '').toLowerCase(),
             grievance_source_id: source.id,
             platform: 'x',
             posted_by: {
@@ -1041,6 +1042,7 @@ const upsertFacebookGrievancesForSource = async (source, startDate = null, endDa
                 complaint_code: await generateComplaintCode(),
                 tweet_id: canonicalPostId,
                 tagged_account: source.handle,
+                tagged_account_normalized: String(source.handle || '').replace(/^@/, '').toLowerCase(),
                 grievance_source_id: source.id,
                 platform: 'facebook',
                 posted_by: {
@@ -1107,6 +1109,7 @@ const upsertFacebookGrievancesForSource = async (source, startDate = null, endDa
                 complaint_code: await generateComplaintCode(),
                 tweet_id: canonicalCommentId,
                 tagged_account: source.handle,
+                tagged_account_normalized: String(source.handle || '').replace(/^@/, '').toLowerCase(),
                 grievance_source_id: source.id,
                 platform: 'facebook',
                 posted_by: {
@@ -1654,6 +1657,7 @@ const createGrievanceFromPost = async (post, platform, taggedKeyword) => {
         complaint_code: await generateComplaintCode(),
         tweet_id: post.tweet_id,
         tagged_account: taggedKeyword,
+        tagged_account_normalized: String(taggedKeyword || '').replace(/^@/, '').toLowerCase(),
         platform,
         posted_by: {
             handle: post.author?.handle || post.author?.author_handle || 'unknown',

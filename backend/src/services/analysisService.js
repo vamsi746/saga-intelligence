@@ -4,6 +4,7 @@ const { categorizeText } = require('./llmService');
 const mappingService = require('./mappingService');
 const personDetectionService = require('./personDetectionService');
 const locationExtractionService = require('./locationExtractionService');
+const constituencyMappingService = require('./constituencyMappingService');
 
 /**
  * Analysis Pipeline (V7 — Dynamic, Person-First)
@@ -91,6 +92,33 @@ const analyzeContent = async (text, options = {}) => {
     ]);
     log(`  → Persons: ${linkedPersons.length} (ours=${linkedPersons.filter(p => p.side === 'ours').length}, opp=${linkedPersons.filter(p => p.side === 'opposition').length})`);
     log(`  → Location: ${detectedLocation ? detectedLocation.city : 'not found'}`);
+
+    // ─── Pass B.1: Location-to-Person Linking ──────────────────────────────
+    if (detectedLocation) {
+      const constituency = detectedLocation.constituency || constituencyMappingService.resolveLocationToConstituency(detectedLocation.city);
+      if (constituency) {
+        const localLeaders = constituencyMappingService.getLeadersForConstituency(constituency);
+        localLeaders.forEach(leader => {
+          // Add to linkedPersons if not already present
+          const alreadyLinked = linkedPersons.some(p => p.person_id === leader.id);
+          if (!alreadyLinked) {
+            linkedPersons.push({
+              person_id: leader.id,
+              name: leader.name,
+              role: leader.role,
+              district: leader.district,
+              constituency: leader.constituency,
+              side: leader.side,
+              party: leader.party,
+              handle: leader.primary_handle || '',
+              handle_normalized: leader.primary_handle_normalized || '',
+              match_type: 'location_match'
+            });
+            log(`  → Linked ${leader.name} via constituency: ${constituency}`);
+          }
+        });
+      }
+    }
 
     // ─── Pass C: LLM with resolved entities as context ────────────────────
     log('Pass C: LLM Classification (perspective-aware)');
