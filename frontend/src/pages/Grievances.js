@@ -46,9 +46,8 @@ import GrievanceAnalysisModal from '../components/grievances/GrievanceAnalysisMo
 import { useRbac } from '../contexts/RbacContext';
 import { usePoliticianNavigation } from '../contexts/PoliticianNavigationContext';
 import { buildKeywordList, scoreRelevance } from '../utils/keywordService';
-import { TOP_10_MINISTERS, WATCH_POLITICIANS, getMinisterById, getMinisterInitials } from '../data/telanganaMinistersData';
+import { TOP_10_MINISTERS, getMinisterById, getMinisterInitials } from '../data/telanganaMinistersData';
 import { MlaAnalyticsSummary } from '../components/grievances/MlaAnalyticsSummary';
-import { AndhraPradeshMapWidget } from '../components/grievances/AndhraPradeshMapWidget';
 /* ═══════════════════════════════════════════════════════════════ */
 /*                       MAIN COMPONENT                          */
 /* ═══════════════════════════════════════════════════════════════ */
@@ -305,7 +304,6 @@ const Grievances = () => {
     const [, setStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, converted_to_fir: 0 });
     const [, setWorkflowStats] = useState({ total: 0, pending: 0, escalated: 0, closed: 0, fir: 0 });
     const [activeReportSubTab, setActiveReportSubTab] = useState('grievance'); // grievance, suggestion, criticism
-    const [watchPlatform, setWatchPlatform] = useState('twitter'); // 'twitter' | 'instagram'
     const [pagination, setPagination] = useState({ hasMore: false, nextCursor: null, total: 0 });
     const fetchAbortRef = useRef(null); // AbortController for cancelling stale requests
 
@@ -439,13 +437,6 @@ const Grievances = () => {
     const showTopMlaGrid = false;
 
     const topMlaGridFilters = useMemo(() => ({}), []);
-
-    // Platform-scoped filter for the AP Leaders watch section
-    // Changes only when the user switches between X and Instagram
-    const watchFilters = useMemo(
-        () => (watchPlatform ? { platform: watchPlatform } : {}),
-        [watchPlatform]
-    );
 
     const grievanceStatusFeatureMap = useMemo(() => ({
         total: 'all',
@@ -1740,6 +1731,7 @@ const Grievances = () => {
                 selectedHandle={selectedHandle}
                 onHandleChange={setSelectedHandle}
                 sources={sources}
+                onDeleteSource={(source) => setDeleteConfirmSource(source)}
                 onAddSource={() => {
                     if (navbarPlatform !== 'all') {
                         setAddSourcePlatform(navbarPlatform);
@@ -1876,115 +1868,6 @@ const Grievances = () => {
                                 onReportCodeHandled={() => setOpenCReportCode('')}
                             />
                         )}
-                    </div>
-                </div>
-            )}
-
-            {/* ─── AP Leaders Watch Monitor ─── */}
-            {!isReportsTab && !politicianContext && (
-                <div className="mx-2 mt-3 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50/30 shadow-sm overflow-hidden">
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-amber-100 bg-amber-50/60">
-                        <div className="flex items-center gap-2.5">
-                            <div className="h-7 w-7 rounded-lg bg-amber-500 flex items-center justify-center shadow-sm">
-                                <BadgeCheck className="h-4 w-4 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-[13px] font-bold text-slate-900">AP Leaders Monitor</h3>
-                                <p className="text-[10px] text-slate-500">Live mentions &amp; tags — Nara Chandrababu Naidu &amp; Nara Lokesh</p>
-                            </div>
-                        </div>
-
-                        {/* Platform switcher: X and Instagram only */}
-                        <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white p-0.5 shadow-sm">
-                            {[
-                                { id: 'twitter',   label: 'X',         icon: '𝕏' },
-                                { id: 'instagram', label: 'Instagram',  icon: '📸' },
-                            ].map(({ id, label, icon }) => {
-                                const active = watchPlatform === id;
-                                return (
-                                    <button
-                                        key={id}
-                                        type="button"
-                                        onClick={() => setWatchPlatform(id)}
-                                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-semibold transition-all ${
-                                            active
-                                                ? 'bg-slate-900 text-white shadow-sm'
-                                                : 'text-slate-500 hover:text-slate-800'
-                                        }`}
-                                    >
-                                        <span>{icon}</span>
-                                        {label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Politician identity strip */}
-                    <div className="flex items-center gap-4 px-4 py-2.5 border-b border-amber-100/60 bg-white/60">
-                        {WATCH_POLITICIANS.map((wp) => (
-                            <div key={wp.id} className="flex items-center gap-2">
-                                <div
-                                    className="h-7 w-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm flex-shrink-0"
-                                    style={{ background: wp.color }}
-                                >
-                                    {getMinisterInitials(wp.shortName)}
-                                </div>
-                                <div>
-                                    <span className="text-[11px] font-bold text-slate-900">{wp.shortName}</span>
-                                    <span
-                                        className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white"
-                                        style={{ background: wp.color }}
-                                    >
-                                        {wp.roleTag}
-                                    </span>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-[10px] text-slate-400 hover:text-slate-700 ml-1"
-                                    onClick={() => navigateToPoliticianGrievances(wp)}
-                                >
-                                    Full Feed <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
-                                </Button>
-                                {wp !== WATCH_POLITICIANS[WATCH_POLITICIANS.length - 1] && (
-                                    <div className="w-px h-6 bg-slate-200 ml-2" />
-                                )}
-                            </div>
-                        ))}
-                        <span className="ml-auto text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {watchPlatform === 'twitter' ? '𝕏 X / Twitter' : '📸 Instagram'} · mentions &amp; tags
-                        </span>
-                    </div>
-
-                    {/* AP Map */}
-                    <div className="px-3 pt-3">
-                        <AndhraPradeshMapWidget
-                            politicians={WATCH_POLITICIANS}
-                            onPoliticianClick={(id) => {
-                                const wp = WATCH_POLITICIANS.find(p => p.id === id || (id === 'cbn' && p.id === 'chandra-babu-naidu') || (id === 'lokesh' && p.id === 'nara-lokesh'));
-                                if (wp) navigateToPoliticianGrievances(wp);
-                            }}
-                        />
-                    </div>
-
-                    {/* Watch cards — side by side */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-amber-100 mt-3">
-                        {WATCH_POLITICIANS.map((wp) => (
-                            <div key={`${wp.id}-${watchPlatform}`} className="p-3">
-                                <TopMlaWatchCard
-                                    politician={wp}
-                                    rank={WATCH_POLITICIANS.indexOf(wp) + 1}
-                                    filters={watchFilters}
-                                    onAction={handleAction}
-                                    getProxiedMediaUrl={getProxiedMediaUrl}
-                                    downloadStates={downloadStates}
-                                    actionedGrievanceIds={actionedGrievanceIds}
-                                    selectedGrievanceId={selectedGrievance?.id}
-                                />
-                            </div>
-                        ))}
                     </div>
                 </div>
             )}

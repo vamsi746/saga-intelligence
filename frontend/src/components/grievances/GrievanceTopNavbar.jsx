@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-    ChevronDown, X as XIcon, Globe, Plus, MapPin, Search
+    ChevronDown, X as XIcon, Globe, Plus, MapPin, Search, Trash2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -45,6 +45,7 @@ export const GrievanceTopNavbar = ({
     selectedHandle = null,
     onHandleChange,
     sources = [],
+    onDeleteSource,
     onAddSource,
     locationFilter = null,
     onLocationChange,
@@ -265,9 +266,25 @@ export const GrievanceTopNavbar = ({
                                                         : 'text-slate-700 hover:bg-slate-100'
                                                 )}
                                             >
-                                                <div className="flex min-w-0 flex-col gap-1">
-                                                    <span className="truncate font-medium">{source.display_name || source.handle}</span>
-                                                    <span className="truncate text-xs text-slate-500">@{source.handle}</span>
+                                                <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                                                    <div className="flex min-w-0 flex-col gap-1">
+                                                        <span className="truncate font-medium">{source.display_name || source.handle}</span>
+                                                        <span className="truncate text-xs text-slate-500">@{source.handle}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            onDeleteSource?.(source);
+                                                            setIsHandleDropdownOpen(false);
+                                                        }}
+                                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                                        title={`Delete ${source.handle}`}
+                                                        aria-label={`Delete ${source.handle}`}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
                                                 </div>
                                             </DropdownMenuItem>
                                         ))}

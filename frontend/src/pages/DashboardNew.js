@@ -18,12 +18,17 @@ import { getMinisterInitials, WATCH_POLITICIANS } from '../data/telanganaMiniste
 import { PARTY_WISE_MLA_DIRECTORY, TOTAL_MLA_DIRECTORY_COUNT } from '../data/telanganaMlaDirectory';
 import api from '../lib/api';
 import usePoliticianGrievances from '../hooks/usePoliticianGrievances';
+import { buildKeywordList, getEntityKeywords, isGrievanceRelevant, scoreRelevance } from '../utils/keywordService';
 
 import TelanganaMap from './TelanganaMap';
 
 // Stable references so usePoliticianGrievances doesn't recreate its useCallback on every render
 const MDP_FILTERS = {};
 const MDP_OPTIONS = { searchLimit: 40, constituencyLimit: 20 };
+const EMPTY_SENTIMENT_SUMMARY = Object.freeze({ total: 0, positive: 0, neutral: 0, negative: 0 });
+const CARD_SUMMARY_SEARCH_LIMIT = 40;
+const CARD_SUMMARY_CONSTITUENCY_LIMIT = 20;
+const CARD_SUMMARY_MAX_KEYWORDS = 8;
 
 // Platform configurations
 const PLATFORMS = [
@@ -60,6 +65,136 @@ const buildSentimentBreakdown = (summary) => {
       percentage: total ? Math.round((segment.value / total) * 100) : 0,
     })),
   };
+};
+
+const normalizeSentimentSummary = (summary) => ({
+  total: Number(summary?.total || 0),
+  positive: Number(summary?.positive || 0),
+  neutral: Number(summary?.neutral || 0),
+  negative: Number(summary?.negative || 0),
+});
+
+const summarizeGrievances = (grievances = []) => {
+  const summary = { total: grievances.length, positive: 0, neutral: 0, negative: 0 };
+
+  grievances.forEach((grievance) => {
+    const sentiment = String(grievance?.sentiment || '').toLowerCase();
+    if (sentiment === 'positive') summary.positive += 1;
+    else if (sentiment === 'negative') summary.negative += 1;
+    else summary.neutral += 1;
+  });
+
+  return summary;
+};
+
+const getGrievanceIdentity = (grievance) => (
+  grievance?.id
+  || grievance?.post_id
+  || grievance?.content?.post_url
+  || grievance?.url
+  || [
+    grievance?.posted_by?.handle,
+    grievance?.post_date,
+    grievance?.detected_date,
+    grievance?.content?.full_text,
+    grievance?.content?.text,
+  ].filter(Boolean).join('::')
+);
+
+const getGrievanceSearchText = (grievance) => [
+  grievance?.content?.full_text,
+  grievance?.content?.text,
+  grievance?.posted_by?.handle,
+  grievance?.posted_by?.display_name,
+  grievance?.tagged_account,
+  grievance?.location_city,
+].filter(Boolean).join(' ');
+
+const fetchPoliticianSentimentSummary = async (entity) => {
+  if (!entity) return EMPTY_SENTIMENT_SUMMARY;
+
+  const constituency = entity.constituency?.trim().toLowerCase();
+
+  if (constituency) {
+    try {
+      const response = await api.get('/grievances/location-summary', {
+        params: { location_city: constituency },
+      });
+      const locationSummary = normalizeSentimentSummary(response.data);
+      if (locationSummary.total > 0) return locationSummary;
+    } catch {
+      // Fall back to keyword and handle matching below.
+    }
+  }
+
+  const keywordList = buildKeywordList(entity);
+  const entityKeywords = getEntityKeywords(entity);
+  const commonParams = { limit: CARD_SUMMARY_SEARCH_LIMIT };
+  const requests = [];
+
+  entityKeywords.handles.slice(0, 2).forEach((handle) => {
+    requests.push(
+      api.get('/grievances', { params: { posted_by_handle: handle, ...commonParams } })
+        .catch(() => ({ data: { grievances: [] } }))
+    );
+    requests.push(
+      api.get('/grievances', { params: { search: `@${handle}`, ...commonParams } })
+        .catch(() => ({ data: { grievances: [] } }))
+    );
+  });
+
+  const handleSlots = Math.min(entityKeywords.handles.length, 2) * 2;
+  const nameBudget = Math.max(1, CARD_SUMMARY_MAX_KEYWORDS - handleSlots);
+
+  keywordList
+    .filter((keyword) => keyword.type === 'primary' || keyword.type === 'alias')
+    .slice(0, nameBudget)
+    .forEach((keyword) => {
+      requests.push(
+        api.get('/grievances', { params: { search: keyword.term, ...commonParams } })
+          .catch(() => ({ data: { grievances: [] } }))
+      );
+    });
+
+  if (constituency) {
+    requests.push(
+      api.get('/grievances', {
+        params: {
+          location_city: constituency,
+          location: constituency,
+          limit: CARD_SUMMARY_CONSTITUENCY_LIMIT,
+        },
+      }).catch(() => ({ data: { grievances: [] } }))
+    );
+  }
+
+  if (!requests.length) return EMPTY_SENTIMENT_SUMMARY;
+
+  try {
+    const responses = await Promise.all(requests);
+    const seen = new Set();
+    const merged = [];
+
+    responses.forEach((response) => {
+      (response.data?.grievances || []).forEach((grievance) => {
+        const identity = getGrievanceIdentity(grievance);
+        if (!identity || seen.has(identity)) return;
+        seen.add(identity);
+        merged.push(grievance);
+      });
+    });
+
+    const relevant = merged
+      .map((grievance) => ({
+        ...grievance,
+        _relevanceScore: scoreRelevance(getGrievanceSearchText(grievance), keywordList),
+      }))
+      .filter((grievance) => grievance._relevanceScore > 0 && isGrievanceRelevant(grievance, entity));
+
+    return summarizeGrievances(relevant);
+  } catch {
+    return EMPTY_SENTIMENT_SUMMARY;
+  }
 };
 
 const CompactSentimentBar = ({ summary, accentColor, label }) => {
@@ -547,14 +682,8 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
 
     Promise.all(
       membersToFetch.map(async (member) => {
-        try {
-          const response = await api.get('/grievances/location-summary', {
-            params: { location_city: member.constituency.toLowerCase() }
-          });
-          return [member.id, response.data || { total: 0, positive: 0, neutral: 0, negative: 0 }];
-        } catch {
-          return [member.id, { total: 0, positive: 0, neutral: 0, negative: 0 }];
-        }
+        const summary = await fetchPoliticianSentimentSummary(member);
+        return [member.id, summary];
       })
     ).then((entries) => {
       if (cancelled) return;
@@ -819,9 +948,9 @@ const AndhraPradeshMapPanel = ({ leader }) => {
   const activeKey = String(leader?.constituency || '').trim().toLowerCase();
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-hidden bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-4">
-      <div className="absolute inset-x-0 top-0 z-10 border-b border-amber-200/70 bg-white/80 px-4 py-3 backdrop-blur-sm">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-700">Andhra Pradesh</p>
+    <div className="relative flex h-full items-center justify-center overflow-hidden bg-white p-4">
+      <div className="absolute inset-x-0 top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-700">Andhra Pradesh</p>
         <p className="mt-1 text-sm font-semibold text-slate-900">Constituency Map</p>
       </div>
 
@@ -830,6 +959,7 @@ const AndhraPradeshMapPanel = ({ leader }) => {
           src={ANDHRA_PRADESH_MAP_URL}
           alt="Andhra Pradesh map"
           className="h-full w-full object-contain"
+          style={{ filter: 'grayscale(1) brightness(2.8) contrast(3.2)' }}
           draggable={false}
         />
 
