@@ -1,6 +1,12 @@
-import { TELANGANA_MINISTERS } from './telanganaMinistersData';
+import { TELANGANA_MINISTERS, WATCH_POLITICIANS } from './telanganaMinistersData';
 
 export const MLA_PARTY_META = {
+  TDP: {
+    label: 'TDP',
+    fullName: 'Telugu Desam Party',
+    color: '#d97706',
+    accent: 'from-amber-500/10 to-transparent',
+  },
   INC: {
     label: 'INC',
     fullName: 'Indian National Congress',
@@ -767,14 +773,34 @@ const buildMember = (party, fileName, index) => {
   };
 };
 
-export const PARTY_WISE_MLA_DIRECTORY = PARTY_ORDER.map((party) => ({
-  party,
-  ...MLA_PARTY_META[party],
-  members: sortMembersForParty(
+// ─── TDP tab: AP politicians tracked for social mentions ──────────────────
+const TDP_DIRECTORY_MEMBERS = WATCH_POLITICIANS
+  .filter(wp => wp.party === 'TDP')
+  .map((wp, index) => ({
+    ...wp,
+    selectable: true,
+    linkedProfile: wp,
+    sourceFileName: wp.id,
+    sourceOrder: index,
+  }));
+
+const TDP_DIRECTORY_GROUP = {
+  party: 'TDP',
+  ...MLA_PARTY_META.TDP,
+  members: TDP_DIRECTORY_MEMBERS,
+};
+
+export const PARTY_WISE_MLA_DIRECTORY = [
+  TDP_DIRECTORY_GROUP,
+  ...PARTY_ORDER.map((party) => ({
     party,
-    PARTY_WISE_IMAGE_FILES[party].map((fileName, index) => buildMember(party, fileName, index))
-  ),
-}));
+    ...MLA_PARTY_META[party],
+    members: sortMembersForParty(
+      party,
+      PARTY_WISE_IMAGE_FILES[party].map((fileName, index) => buildMember(party, fileName, index))
+    ),
+  })),
+];
 
 export const TOTAL_MLA_DIRECTORY_COUNT = PARTY_WISE_MLA_DIRECTORY.reduce(
   (sum, partyGroup) => sum + partyGroup.members.length,

@@ -829,8 +829,44 @@ export const TOP_10_MINISTERS = [...TELANGANA_MINISTERS]
   .sort((a, b) => b.activityScore - a.activityScore)
   .slice(0, 10);
 
+// ─── Watch Politicians (opposition / AP leaders monitored for social mentions) ─
+export const WATCH_POLITICIANS = [
+  {
+    id: 'chandra-babu-naidu',
+    name: 'N. Chandrababu Naidu',
+    shortName: 'Chandrababu Naidu',
+    role: 'Chief Minister',
+    department: 'Chief Minister',
+    roleTag: 'Chief Minister',
+    constituency: 'Kuppam',
+    district: 'Chittoor',
+    party: 'TDP',
+    state: 'Andhra Pradesh',
+    image: '/MLA_Images/TDP/cbn.jpeg',
+    activityScore: 95,
+    color: '#d97706',
+    entityType: 'ap-cm',
+  },
+  {
+    id: 'nara-lokesh',
+    name: 'Nara Lokesh',
+    shortName: 'Nara Lokesh',
+    role: 'IT Minister',
+    department: 'IT Minister',
+    roleTag: 'IT Minister',
+    constituency: 'Mangalagiri',
+    district: 'Guntur',
+    party: 'TDP',
+    state: 'Andhra Pradesh',
+    image: '/MLA_Images/TDP/lokesh.webp',
+    activityScore: 90,
+    color: '#f59e0b',
+    entityType: 'ap-minister',
+  },
+];
+
 export const getMinisterById = (id) =>
-  TELANGANA_MINISTERS.find((m) => m.id === id) || null;
+  [...TELANGANA_MINISTERS, ...WATCH_POLITICIANS].find((m) => m.id === id) || null;
 
 export const getMinisterByConstituency = (constituency) =>
   TELANGANA_MINISTERS.find(

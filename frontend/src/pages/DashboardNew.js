@@ -14,11 +14,16 @@ import { Card } from '../components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '../components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useDashboard } from '../contexts/DashboardContext';
-import { getMinisterInitials } from '../data/telanganaMinistersData';
+import { getMinisterInitials, WATCH_POLITICIANS } from '../data/telanganaMinistersData';
 import { PARTY_WISE_MLA_DIRECTORY, TOTAL_MLA_DIRECTORY_COUNT } from '../data/telanganaMlaDirectory';
 import api from '../lib/api';
+import usePoliticianGrievances from '../hooks/usePoliticianGrievances';
 
 import TelanganaMap from './TelanganaMap';
+
+// Stable references so usePoliticianGrievances doesn't recreate its useCallback on every render
+const MDP_FILTERS = {};
+const MDP_OPTIONS = { searchLimit: 40, constituencyLimit: 20 };
 
 // Platform configurations
 const PLATFORMS = [
@@ -500,8 +505,7 @@ const DroneViewStrip = () => {
 // ─── Ministers Panel ────────────────────────────────────────────────────────
 const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selectedCount = 0 }) => {
   const { navigateToPoliticianGrievances } = usePoliticianNavigation();
-  const [activeParty, setActiveParty] = useState('INC');
-  const [memberSentimentMap, setMemberSentimentMap] = useState({});
+  const [activeParty, setActiveParty] = useState('TDP');
 
   const activePartyGroup = useMemo(
     () => PARTY_WISE_MLA_DIRECTORY.find((group) => group.party === activeParty) || PARTY_WISE_MLA_DIRECTORY[0],
@@ -576,7 +580,7 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
             <Users className="h-3.5 w-3.5" style={{ color: activePartyGroup.color }} />
           </div>
           <div>
-            <h3 className="text-[13px] font-semibold text-foreground">Telangana MLAs</h3>
+            <h3 className="text-[13px] font-semibold text-foreground"> MLAs</h3>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -694,6 +698,16 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
                   </p>
                 </div>
 
+                {/* Role tag badge — Chief Minister / IT Minister etc. */}
+                {member.roleTag && (
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold text-white tracking-wide"
+                    style={{ background: member.color }}
+                  >
+                    {member.roleTag}
+                  </span>
+                )}
+
                 {/* Constituency / party chip */}
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
                   style={{ borderColor: `${member.color}40`, color: member.color, background: `${member.color}10` }}
@@ -735,6 +749,7 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
           </div>
         </TooltipProvider>
       </div>
+
     </Card>
   );
 };
@@ -783,23 +798,31 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
 };
 
 // ─── Minister Detail Panel (shows in dashboard when minister is selected) ────
-const MinisterDetailPanel = ({ minister, data }) => {
-  // Hooks must always be called unconditionally — early return comes after
-  const categories = useMemo(() => {
-    if (!data?.categories) return [];
-    const map = {};
-    (data.categories).forEach(item => {
-      const [name, cnt] = Array.isArray(item) ? item : [item?.name, item?.count || 0];
-      if (name) map[name] = (map[name] || 0) + Number(cnt);
+const MinisterDetailPanel = ({ minister }) => {
+  // Uses the same keyword-based pipeline as the Grievances page so counts always match
+  const { grievances, loading: grievancesLoading, total } = usePoliticianGrievances(
+    minister || null,
+    MDP_FILTERS,
+    MDP_OPTIONS
+  );
+
+  const { sentiment, categories } = useMemo(() => {
+    if (!grievances.length) return { sentiment: { positive: 0, neutral: 0, negative: 0 }, categories: [] };
+    const sent = { positive: 0, neutral: 0, negative: 0 };
+    const topicMap = {};
+    grievances.forEach(g => {
+      const s = (g.sentiment || '').toLowerCase();
+      if (s === 'positive') sent.positive++;
+      else if (s === 'negative') sent.negative++;
+      else sent.neutral++;
+      const cat = g.grievance_type || g.category;
+      if (cat) topicMap[cat] = (topicMap[cat] || 0) + 1;
     });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [data]);
+    const cats = Object.entries(topicMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return { sentiment: sent, categories: cats };
+  }, [grievances]);
 
-  // Guard: nothing to render when no single minister is selected
   if (!minister) return null;
-
-  const sentiment = { positive: data?.positive || 0, negative: data?.negative || 0, neutral: data?.neutral || 0 };
-  const total = data?.total || 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -828,7 +851,13 @@ const MinisterDetailPanel = ({ minister, data }) => {
       {/* Sentiment */}
       <Card className="p-3 border-0 shadow-sm">
         <p className="text-[11px] font-semibold text-foreground mb-2">Sentiment Analysis</p>
-        <MiniSentimentPie {...sentiment} />
+        {grievancesLoading ? (
+          <div className="flex items-center justify-center h-12">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <MiniSentimentPie {...sentiment} />
+        )}
       </Card>
 
       {/* Stats */}
@@ -850,7 +879,7 @@ const MinisterDetailPanel = ({ minister, data }) => {
       </Card>
 
       {/* Topics */}
-      {categories.length > 0 && (
+      {!grievancesLoading && categories.length > 0 && (
         <Card className="p-3 border-0 shadow-sm">
           <p className="text-[11px] font-semibold text-foreground mb-2">Top Topics</p>
           <div className="space-y-1">
@@ -872,21 +901,10 @@ const Dashboard = () => {
   const { navigateToPoliticianGrievances } = usePoliticianNavigation();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMinister, setSelectedMinister] = useState(null);
-  const [ministerData, setMinisterData] = useState(null);
-  const [ministerDataLoading, setMinisterDataLoading] = useState(false);
 
   const toggleMinister = useCallback((minister) => {
     setSelectedMinister((prev) => (prev?.id === minister.id ? null : minister));
   }, []);
-
-  useEffect(() => {
-    if (!selectedMinister) { setMinisterData(null); return; }
-    setMinisterDataLoading(true);
-    api.get('/grievances/location-summary', { params: { location_city: selectedMinister.constituency.toLowerCase() } })
-      .then(r => setMinisterData(r.data || null))
-      .catch(() => setMinisterData(null))
-      .finally(() => setMinisterDataLoading(false));
-  }, [selectedMinister]);
 
   const [alertType, setAlertType] = useState('active');
   const [alertPlatform, setAlertPlatform] = useState('all');
@@ -1082,7 +1100,6 @@ const Dashboard = () => {
                     </h3>
                   </div>
                   <div className="flex items-center gap-2">
-                    {ministerDataLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     <button
                       onClick={() => navigateToPoliticianGrievances(selectedMinister)}
                       className="text-[10px] font-semibold px-2 py-0.5 rounded hover:opacity-80 transition-opacity text-white"
@@ -1096,7 +1113,7 @@ const Dashboard = () => {
                 <div className="flex gap-0 bg-white dark:bg-background" style={{ height: '480px' }}>
                   {/* Left: detail panel */}
                   <div className="w-[190px] flex-shrink-0 overflow-y-auto p-2.5 border-r border-border/30 custom-scrollbar">
-                    <MinisterDetailPanel minister={selectedMinister} data={ministerData} />
+                    <MinisterDetailPanel minister={selectedMinister} />
                   </div>
                   {/* Right: map */}
                   <div className="flex-1 min-w-0">
