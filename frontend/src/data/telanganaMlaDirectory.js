@@ -613,6 +613,20 @@ const PROFILE_OVERRIDES = {
       role: 'Floor Leader',
     },
   },
+  TDP: {
+    'lokesh.webp': {
+      name: 'Nara Lokesh',
+      shortName: 'Lokesh',
+      role: 'IT Minister',
+      department: 'IT Minister',
+    },
+    'cbn.webp': {
+      name: 'N. Chandrababu Naidu',
+      shortName: 'CBN',
+      role: 'Chief Minister',
+      department: 'Chief Minister',
+    },
+  },
   AIMIM: {
     'SRI  AKBAR UDDIN OWAISI.jpg': {
       name: 'Akbaruddin Owaisi',

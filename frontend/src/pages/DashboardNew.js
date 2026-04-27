@@ -506,6 +506,7 @@ const DroneViewStrip = () => {
 const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selectedCount = 0 }) => {
   const { navigateToPoliticianGrievances } = usePoliticianNavigation();
   const [activeParty, setActiveParty] = useState('TDP');
+  const [memberSentimentMap, setMemberSentimentMap] = useState({});
 
   const activePartyGroup = useMemo(
     () => PARTY_WISE_MLA_DIRECTORY.find((group) => group.party === activeParty) || PARTY_WISE_MLA_DIRECTORY[0],
@@ -580,7 +581,7 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
             <Users className="h-3.5 w-3.5" style={{ color: activePartyGroup.color }} />
           </div>
           <div>
-            <h3 className="text-[13px] font-semibold text-foreground"> MLAs</h3>
+            <h3 className="text-[13px] font-semibold text-foreground">MLAs & Party Leaders</h3>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -792,6 +793,77 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
             <span className="font-bold" style={{ color: row.color }}>{row.value}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+};
+
+const ANDHRA_PRADESH_MAP_URL = 'https://upload.wikimedia.org/wikipedia/commons/f/fe/Andhra_Pradesh_map_for_WLM-IN.svg';
+
+const TDP_MAP_POINTS = {
+  mangalagiri: {
+    top: '34%',
+    left: '62%',
+    district: 'Guntur',
+    label: 'Mangalagiri',
+  },
+  kuppam: {
+    top: '82%',
+    left: '42%',
+    district: 'Chittoor',
+    label: 'Kuppam',
+  },
+};
+
+const AndhraPradeshMapPanel = ({ leader }) => {
+  const activeKey = String(leader?.constituency || '').trim().toLowerCase();
+
+  return (
+    <div className="relative flex h-full items-center justify-center overflow-hidden bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-4">
+      <div className="absolute inset-x-0 top-0 z-10 border-b border-amber-200/70 bg-white/80 px-4 py-3 backdrop-blur-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-700">Andhra Pradesh</p>
+        <p className="mt-1 text-sm font-semibold text-slate-900">Constituency Map</p>
+      </div>
+
+      <div className="relative mt-10 h-full w-full max-w-[420px]">
+        <img
+          src={ANDHRA_PRADESH_MAP_URL}
+          alt="Andhra Pradesh map"
+          className="h-full w-full object-contain"
+          draggable={false}
+        />
+
+        {Object.entries(TDP_MAP_POINTS).map(([key, point]) => {
+          const isActive = key === activeKey;
+          return (
+            <div
+              key={key}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ top: point.top, left: point.left }}
+            >
+              <div className="relative flex flex-col items-center">
+                <div
+                  className={`h-4 w-4 rounded-full border-2 shadow ${isActive ? 'scale-110' : ''}`}
+                  style={{
+                    background: isActive ? leader.color : '#ffffff',
+                    borderColor: leader.color,
+                  }}
+                />
+                <div
+                  className="mt-2 min-w-[108px] rounded-xl border px-2.5 py-1.5 text-center shadow-sm"
+                  style={{
+                    background: isActive ? `${leader.color}` : 'rgba(255,255,255,0.96)',
+                    borderColor: `${leader.color}66`,
+                    color: isActive ? '#ffffff' : '#0f172a',
+                  }}
+                >
+                  <p className="text-[10px] font-bold leading-tight">{point.label}</p>
+                  <p className="text-[9px] leading-tight opacity-80">{point.district}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1117,7 +1189,11 @@ const Dashboard = () => {
                   </div>
                   {/* Right: map */}
                   <div className="flex-1 min-w-0">
-                    <TelanganaMap embedded highlightMinister={selectedMinister} />
+                    {selectedMinister.party === 'TDP' ? (
+                      <AndhraPradeshMapPanel leader={selectedMinister} />
+                    ) : (
+                      <TelanganaMap embedded highlightMinister={selectedMinister} />
+                    )}
                   </div>
                 </div>
               </div>
