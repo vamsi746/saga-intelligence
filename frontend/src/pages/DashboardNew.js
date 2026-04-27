@@ -51,7 +51,7 @@ const buildSentimentBreakdown = (summary) => {
   const total = summary?.total ?? (positive + neutral + negative);
   const rawSegments = [
     { key: 'positive', label: '+Ve', value: positive, color: '#10b981', bgClass: 'bg-emerald-500', textClass: 'text-emerald-600' },
-    { key: 'neutral', label: 'Mod..', value: neutral, color: '#f59e0b', bgClass: 'bg-amber-400', textClass: 'text-amber-600' },
+    { key: 'neutral', label: 'Mixed', value: neutral, color: '#f59e0b', bgClass: 'bg-amber-400', textClass: 'text-amber-600' },
     { key: 'negative', label: '-Ve', value: negative, color: '#ef4444', bgClass: 'bg-red-500', textClass: 'text-red-600' },
   ];
 
@@ -767,115 +767,115 @@ const MinistersPanel = ({ selectedIds = new Set(), onToggle, onClearAll, selecte
       <div className="max-h-[380px] overflow-y-auto p-4 custom-scrollbar">
         <TooltipProvider delayDuration={100}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {sortedMembers.map((member) => {
-            const isSelected = selectedIds.has(member.id);
-            const isSelectable = member.selectable;
-            const linkedProfile = member.linkedProfile;
-            const sentimentSummary = memberSentimentMap[member.id] || { total: 0, positive: 0, neutral: 0, negative: 0 };
-            const positionText = member.department
-              || (member.role === 'Chief Minister' || member.role === 'Deputy Chief Minister' ? member.role : 'MLA');
+            {sortedMembers.map((member) => {
+              const isSelected = selectedIds.has(member.id);
+              const isSelectable = member.selectable;
+              const linkedProfile = member.linkedProfile;
+              const sentimentSummary = memberSentimentMap[member.id] || { total: 0, positive: 0, neutral: 0, negative: 0 };
+              const positionText = member.department
+                || (member.role === 'Chief Minister' || member.role === 'Deputy Chief Minister' ? member.role : 'MLA');
 
-            return (
-              <button
-                key={member.id}
-                type="button"
-                disabled={!isSelectable}
-                onClick={() => isSelectable && onToggle(linkedProfile)}
-                className={`flex min-h-[220px] flex-col gap-3 rounded-xl border bg-card p-3 text-left transition-all duration-200 relative overflow-hidden ${isSelected
-                  ? 'border-2 shadow-lg scale-[1.02] cursor-pointer'
-                  : isSelectable
-                    ? 'border-border/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
-                    : 'border-border/40 opacity-95 cursor-default'
-                  }`}
-                style={isSelected ? { borderColor: member.color, boxShadow: `0 4px 20px ${member.color}25` } : undefined}
-              >
-
-                <div className="flex items-start justify-between gap-2">
-                  <div className="relative mt-1">
-                    <div
-                      className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all"
-                      style={{ ringColor: member.color, borderColor: member.color }}
-                    >
-                      <Avatar className="w-full h-full">
-                        <AvatarImage
-                          src={member.image}
-                          alt={member.shortName}
-                          className="object-cover object-top"
-                        />
-                        <AvatarFallback
-                          className="text-white text-base font-bold"
-                          style={{ background: member.color }}
-                        >
-                          {getMinisterInitials(member.shortName)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                  </div>
-                  <CompactSentimentBar
-                    summary={sentimentSummary}
-                    accentColor={member.color}
-                    label={`${member.shortName} sentiment`}
-                  />
-                </div>
-
-                {/* Name */}
-                <div className="w-full">
-                  <p className="text-[11px] font-bold text-foreground leading-tight line-clamp-2 min-h-[28px]">
-                    {member.shortName}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1 min-h-[12px]">
-                    {positionText || '\u00A0'}
-                  </p>
-                </div>
-
-                {/* Role tag badge — Chief Minister / IT Minister etc. */}
-                {member.roleTag && (
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold text-white tracking-wide"
-                    style={{ background: member.color }}
-                  >
-                    {member.roleTag}
-                  </span>
-                )}
-
-                {/* Constituency / party chip */}
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
-                  style={{ borderColor: `${member.color}40`, color: member.color, background: `${member.color}10` }}
+              return (
+                <button
+                  key={member.id}
+                  type="button"
+                  disabled={!isSelectable}
+                  onClick={() => isSelectable && onToggle(linkedProfile)}
+                  className={`flex min-h-[220px] flex-col gap-3 rounded-xl border bg-card p-3 text-left transition-all duration-200 relative overflow-hidden ${isSelected
+                    ? 'border-2 shadow-lg scale-[1.02] cursor-pointer'
+                    : isSelectable
+                      ? 'border-border/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
+                      : 'border-border/40 opacity-95 cursor-default'
+                    }`}
+                  style={isSelected ? { borderColor: member.color, boxShadow: `0 4px 20px ${member.color}25` } : undefined}
                 >
-                  <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
-                  <span className="truncate">{member.constituency || member.party}</span>
-                </div>
 
-                <div className="mt-auto w-full">
-                  {member.district && (
-                    <p className="text-[9px] text-muted-foreground text-center line-clamp-1 mb-1">
-                      {member.district}
-                    </p>
-                  )}
-                </div>
-
-                {/* Selected indicator + View Grievances */}
-                {isSelected && (
-                  <div className="w-full flex flex-col gap-1">
-                    <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
-                      style={{ background: member.color }}>
-                      Selected ✓
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="relative mt-1">
+                      <div
+                        className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-offset-2 transition-all"
+                        style={{ ringColor: member.color, borderColor: member.color }}
+                      >
+                        <Avatar className="w-full h-full">
+                          <AvatarImage
+                            src={member.image}
+                            alt={member.shortName}
+                            className="object-cover object-top"
+                          />
+                          <AvatarFallback
+                            className="text-white text-base font-bold"
+                            style={{ background: member.color }}
+                          >
+                            {getMinisterInitials(member.shortName)}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigateToPoliticianGrievances(linkedProfile);
-                      }}
-                      className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
-                      style={{ borderColor: member.color, color: member.color, background: `${member.color}10` }}
-                    >
-                      View Grievances →
-                    </button>
+                    <CompactSentimentBar
+                      summary={sentimentSummary}
+                      accentColor={member.color}
+                      label={`${member.shortName} sentiment`}
+                    />
                   </div>
-                )}
-              </button>
-            );
-          })}
+
+                  {/* Name */}
+                  <div className="w-full">
+                    <p className="text-[11px] font-bold text-foreground leading-tight line-clamp-2 min-h-[28px]">
+                      {member.shortName}
+                    </p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight line-clamp-1 min-h-[12px]">
+                      {positionText || '\u00A0'}
+                    </p>
+                  </div>
+
+                  {/* Role tag badge — Chief Minister / IT Minister etc. */}
+                  {member.roleTag && (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold text-white tracking-wide"
+                      style={{ background: member.color }}
+                    >
+                      {member.roleTag}
+                    </span>
+                  )}
+
+                  {/* Constituency / party chip */}
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-semibold w-full justify-center"
+                    style={{ borderColor: `${member.color}40`, color: member.color, background: `${member.color}10` }}
+                  >
+                    <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+                    <span className="truncate">{member.constituency || member.party}</span>
+                  </div>
+
+                  <div className="mt-auto w-full">
+                    {member.district && (
+                      <p className="text-[9px] text-muted-foreground text-center line-clamp-1 mb-1">
+                        {member.district}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Selected indicator + View Grievances */}
+                  {isSelected && (
+                    <div className="w-full flex flex-col gap-1">
+                      <div className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center text-white"
+                        style={{ background: member.color }}>
+                        Selected ✓
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigateToPoliticianGrievances(linkedProfile);
+                        }}
+                        className="w-full text-[9px] font-semibold py-0.5 rounded-lg text-center border transition-colors hover:opacity-80"
+                        style={{ borderColor: member.color, color: member.color, background: `${member.color}10` }}
+                      >
+                        View Grievances →
+                      </button>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </TooltipProvider>
       </div>
@@ -911,7 +911,7 @@ const MiniSentimentPie = ({ positive = 0, negative = 0, neutral = 0 }) => {
       <div className="flex-1 space-y-0.5">
         {[
           { label: '+Ve', value: positive, color: '#10b981' },
-          { label: 'Mod..', value: neutral, color: '#f59e0b' },
+          { label: 'Mixed', value: neutral, color: '#f59e0b' },
           { label: '-Ve', value: negative, color: '#ef4444' },
         ].map(row => (
           <div key={row.label} className="flex items-center justify-between text-[9px]">
@@ -1069,7 +1069,7 @@ const MinisterDetailPanel = ({ minister }) => {
           {[
             { label: 'Total', value: total, bg: 'bg-blue-50', text: 'text-blue-700' },
             { label: '+Ve', value: sentiment.positive, bg: 'bg-green-50', text: 'text-green-700' },
-            { label: 'Mod..', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
+            { label: 'Mixed', value: sentiment.neutral, bg: 'bg-amber-50', text: 'text-amber-700' },
             { label: '-Ve', value: sentiment.negative, bg: 'bg-red-50', text: 'text-red-700' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-lg p-2 text-center`}>
@@ -1221,7 +1221,7 @@ const Dashboard = () => {
 
         const sentimentRows = [
           { key: 'positive', label: '+Ve', value: dist.positive || 0, color: '#10b981', barBg: 'bg-emerald-500', trackBg: 'bg-emerald-100', sentiment: 'positive' },
-          { key: 'medium', label: 'Mod..', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
+          { key: 'medium', label: 'Mixed', value: dist.neutral || 0, color: '#f59e0b', barBg: 'bg-amber-400', trackBg: 'bg-amber-100', sentiment: 'neutral' },
           { key: 'negative', label: '-Ve', value: dist.negative || 0, color: '#ef4444', barBg: 'bg-red-500', trackBg: 'bg-red-100', sentiment: 'negative' }
         ];
 
