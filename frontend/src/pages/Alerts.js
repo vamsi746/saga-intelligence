@@ -21,10 +21,6 @@ import { useRbac } from '../contexts/RbacContext';
 
 const ALERT_STATUS_TABS = [
   { value: 'active', label: 'Active' },
-  { value: 'false_positive', label: 'False Positive' },
-  { value: 'acknowledged', label: 'Acknowledged' },
-  { value: 'escalated', label: 'Escalated' },
-  { value: 'reports', label: 'Reports' }
 ];
 
 const Alerts = () => {

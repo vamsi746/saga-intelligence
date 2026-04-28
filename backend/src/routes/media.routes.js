@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const mediaAnalyzerService = require('../services/mediaAnalyzerService');
@@ -433,20 +434,40 @@ router.get('/stream', async (req, res) => {
       origin = 'https://www.youtube.com';
     }
 
+    console.log(`[MediaProxy] Streaming: ${hostname} (UA: ${req.headers['user-agent']})`);
+
     const upstream = await axios.get(rawUrl, {
       responseType: 'stream',
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         ...(range ? { Range: range } : {}),
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         'Accept': '*/*',
         'Referer': referer,
-        'Origin': origin
+        'Origin': origin,
+        'Sec-Fetch-Dest': 'video',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site'
       },
-      validateStatus: (status) => true, // Accept all status codes to proxy them back
-      decompress: false, // Essential for transparent proxying
+      validateStatus: (status) => true,
+      decompress: false,
       maxContentLength: Infinity,
-      maxBodyLength: Infinity
+      maxBodyLength: Infinity,
+      timeout: 30000
     });
+
+    if (upstream.status >= 400) {
+      console.warn(`[MediaProxy] Upstream returned ${upstream.status} for ${hostname}`);
+    }
+
+    // If upstream returns HTML for a media request, the URL has expired or redirected to an
+    // error page. Abort early so the browser gets a clean 502 instead of an HTML blob that
+    // gets saved as .html when the user tries to save the image/video.
+    const upstreamContentType = (upstream.headers?.['content-type'] || '').toLowerCase();
+    if (upstreamContentType.includes('text/html')) {
+      upstream.data.destroy();
+      return res.status(502).json({ error: 'Upstream returned HTML — media URL may have expired' });
+    }
 
     const passthroughHeaders = [
       'content-type',
@@ -466,13 +487,9 @@ router.get('/stream', async (req, res) => {
     // If upstream returned partial content, preserve it.
     res.status(upstream.status);
 
-    if (upstream.status >= 400) {
-      //console.error(`Upstream error ${upstream.status} for ${rawUrl}`);
-    }
-
     upstream.data.pipe(res);
     upstream.data.on('error', (err) => {
-      //console.error('Upstream stream error:', err);
+      console.error('[StreamProxy] Upstream stream error:', err.message);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to stream media' });
       } else {
@@ -480,7 +497,7 @@ router.get('/stream', async (req, res) => {
       }
     });
   } catch (error) {
-    //console.error('Media stream proxy error:', error.message);
+    console.error('[StreamProxy] Global error:', error.message);
     res.status(500).json({ error: 'Failed to stream media' });
   }
 });
