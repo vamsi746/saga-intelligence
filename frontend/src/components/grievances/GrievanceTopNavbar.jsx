@@ -149,6 +149,7 @@ export const GrievanceTopNavbar = ({
                                                 onKeyDown={(e) => e.stopPropagation()}
                                                 placeholder="Search location..."
                                                 className="h-8 border-slate-200 bg-white pl-8 text-xs"
+                                                autoComplete="off"
                                             />
                                         </div>
                                     </div>
