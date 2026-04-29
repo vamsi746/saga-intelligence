@@ -181,28 +181,28 @@ ${definitionsStr}
 ════════════════════════
 8. WORKED EXAMPLES
 ════════════════════════
-EX1 "Great work by Revanth Reddy on Rythu Bharosa 👏"
+EX1 "Great work by Chandrababu Naidu on Polavaram project 👏"
    → OUR side, Support → positive, Normal, Government Praise, score 5
 
-EX2 "KTR exposed in irrigation scam. BRS regime looted 500cr."
+EX2 "Jagan Reddy exposed in corruption scam. YSRCP looted AP funds for 5 years."
    → OPPOSITION, Criticism → positive, Misinformation, Political Criticism, score 10
 
-EX3 "Modi's Kashi work is amazing, India is lucky"
+EX3 "YSRCP is doing great service in Pulivendula, Jagan cares for the poor"
    → OPPOSITION, Support → negative, Normal, Political Criticism, score 35
 
 EX4 "Ugh Mondays 😡😡😡"
    → Neither, no substance → neutral, Normal, Normal, score 0
 
-EX5 "No water in Gachibowli for 3 days, what is the govt doing"
-   → Neither named, real civic grievance in Telangana → negative, Public_Complaint, Public Complaint, score 45
+EX5 "No water in Vijayawada for 3 days, what is the govt doing"
+   → Neither named, real civic grievance in Andhra Pradesh → negative, Public_Complaint, Public Complaint, score 45
 
-EX6 "@revanth_anumula thank you sir for the women's free bus scheme 🙏"
+EX6 "@naralokesh thank you sir for the school reforms in AP 🙏"
    → OUR side handle, Support → positive, Normal, Government Praise, score 3
 
 EX7 "RCB will win IPL this year 🔥"
    → Off-topic sports → neutral, Normal, Normal, score 0
 
-EX8 "Revanth Reddy is destroying Telangana, worst CM ever"
+EX8 "Chandrababu Naidu is destroying Andhra Pradesh, worst CM ever"
    → OUR side, Criticism → negative, Political_Attack, Political Criticism, score 55
 
 ════════════════════════
@@ -333,6 +333,79 @@ const validateResult = (raw) => {
 };
 
 // ─────────────────────────────────────────────────────────
+// Keyword-based fallback (both LLM providers down)
+// Produces a deterministic client-perspective result from
+// party keywords + tone words — no AI required.
+// ─────────────────────────────────────────────────────────
+
+const PARTY_KEYWORDS = {
+  TDP:      ['tdp', 'chandrababu', 'nara lokesh', 'lokesh', 'cbn', 'naidu'],
+  JANASENA: ['janasena', 'jana sena', 'pawan kalyan', 'pawan'],
+  BJP_AP:   ['bjp'],
+  YSRCP:    ['ysrcp', 'ysr congress', 'ycp', 'jagan mohan', 'jagan reddy', 'jagan'],
+  INC_AP:   ['ys sharmila', 'apcc', 'congress ap'],
+};
+// TDP + JANASENA + BJP_AP are our side; YSRCP + INC_AP are opposition
+const PARTY_SIDE = { TDP: 'ours', JANASENA: 'ours', BJP_AP: 'ours', YSRCP: 'opposition', INC_AP: 'opposition' };
+
+const CRITICISM_TERMS = [
+  'scam', 'fraud', 'corrupt', 'failed', 'failure', 'loot', 'arrested',
+  'controversy', 'resign', 'protest', 'allegation', 'accused', 'misuse',
+  'mismanagement', 'bribe', 'scandal', 'exposed', 'betrayed', 'destroyed',
+  'worst', 'against', 'criticized', 'attacked',
+];
+const PRAISE_TERMS = [
+  'good work', 'great work', 'excellent', 'appreciate', 'thanks', 'well done',
+  'development', 'progress', 'success', 'launched', 'inaugurated', 'announced',
+  'congratulations', 'proud', 'achievement',
+];
+
+const keywordFallback = (text) => {
+  const lower = (text || '').toLowerCase();
+
+  let detectedParty = null;
+  for (const [party, words] of Object.entries(PARTY_KEYWORDS)) {
+    if (words.some((w) => lower.includes(w))) { detectedParty = party; break; }
+  }
+
+  if (!detectedParty) {
+    return {
+      category: 'Normal', target_party: 'NEUTRAL', stance: 'Neutral',
+      reasoning: 'Keyword fallback: no AP political entity detected.',
+      grievance_type: 'Normal', grievance_reasoning: '',
+      sentiment: 'neutral', risk_score: 5, risk_level: 'low'
+    };
+  }
+
+  const hasCriticism = CRITICISM_TERMS.some((w) => lower.includes(w));
+  const hasPraise    = PRAISE_TERMS.some((w) => lower.includes(w));
+  const stance = hasCriticism && !hasPraise ? 'Criticism'
+               : hasPraise   && !hasCriticism ? 'Support'
+               : 'Neutral';
+
+  const side = PARTY_SIDE[detectedParty];
+  const target = side === 'ours' ? 'OUR_GROUP' : 'OPPOSITION';
+
+  let sentiment = 'neutral';
+  if (target === 'OUR_GROUP')  sentiment = stance === 'Support' ? 'positive' : stance === 'Criticism' ? 'negative' : 'neutral';
+  if (target === 'OPPOSITION') sentiment = stance === 'Support' ? 'negative' : stance === 'Criticism' ? 'positive' : 'neutral';
+
+  const riskScore = stance === 'Criticism' && target === 'OUR_GROUP' ? 45 : stance === 'Criticism' ? 15 : 5;
+
+  return {
+    category: stance === 'Criticism' ? 'Political_Attack' : 'Normal',
+    target_party: target,
+    stance,
+    reasoning: `Keyword fallback (LLM unavailable): party=${detectedParty} stance=${stance}`,
+    grievance_type: stance === 'Criticism' ? 'Political Criticism' : 'Normal',
+    grievance_reasoning: '',
+    sentiment,
+    risk_score: riskScore,
+    risk_level: riskScore >= 40 ? 'medium' : 'low'
+  };
+};
+
+// ─────────────────────────────────────────────────────────
 // Provider routing (Ollama primary → GitHub Models fallback)
 // ─────────────────────────────────────────────────────────
 
@@ -406,7 +479,9 @@ async function categorizeText(text, ctx = {}) {
     console.error(`[LLM][${fallback}] also failed: ${err.message}`);
   }
 
-  return null;
+  // Both providers failed — deterministic keyword fallback so analysis is never blank
+  console.log('[LLM] Both providers failed — using keyword fallback');
+  return validateResult(keywordFallback(text));
 }
 
 module.exports = {

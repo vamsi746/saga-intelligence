@@ -53,7 +53,7 @@ const grievanceSchema = new mongoose.Schema({
   // Source platform
   platform: {
     type: String,
-    enum: ['x', 'facebook', 'whatsapp', 'instagram', 'youtube'],
+    enum: ['x', 'facebook', 'whatsapp', 'instagram', 'youtube', 'rss'],
     default: 'x'
   },
   complainant_phone: {

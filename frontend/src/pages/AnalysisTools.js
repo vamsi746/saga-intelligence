@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Scan, MessageSquare, ArrowRight, ShieldAlert, Newspaper } from 'lucide-react';
+import { Globe, MessageSquare, ArrowRight } from 'lucide-react';
 
 const tools = [
   {
@@ -13,15 +13,6 @@ const tools = [
     border: 'border-blue-200 dark:border-blue-800',
   },
   {
-    name: 'Deepfake Analysis',
-    description: 'Detect AI-generated and manipulated images and videos.',
-    icon: Scan,
-    href: '/deepfake-analysis',
-    color: 'from-red-500 to-red-600',
-    bg: 'bg-red-50 dark:bg-red-950/30',
-    border: 'border-red-200 dark:border-red-800',
-  },
-  {
     name: 'Telegram',
     description: 'Monitor and analyze Telegram channels and groups.',
     icon: MessageSquare,
@@ -30,24 +21,6 @@ const tools = [
     bg: 'bg-sky-50 dark:bg-sky-950/30',
     border: 'border-sky-200 dark:border-sky-800',
   },
-  {
-    name: 'Dark Web Search',
-    description: 'Review suspicious dark web mentions, actors, and leaked political narratives in one search workspace.',
-    icon: ShieldAlert,
-    href: '/dark-web-search',
-    color: 'from-violet-600 to-fuchsia-600',
-    bg: 'bg-violet-50 dark:bg-violet-950/30',
-    border: 'border-violet-200 dark:border-violet-800',
-  },
-  {
-    name: 'Public Web Articles',
-    description: 'Browse scraped public web articles related to Revanth Reddy, Telangana politics, and BRS context.',
-    icon: Newspaper,
-    href: '/public-web-articles',
-    color: 'from-emerald-600 to-teal-600',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
-    border: 'border-emerald-200 dark:border-emerald-800',
-  }
 ];
 
 const AnalysisTools = () => {

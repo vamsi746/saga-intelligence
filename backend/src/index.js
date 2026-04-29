@@ -382,6 +382,38 @@ const runGrievanceFetch = async () => {
   }
 };
 
+// ─── Keyword Grievance Scheduler ───────────────────────────────────────────
+const startKeywordGrievanceScheduler = () => {
+  const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+  // First run 3 minutes after startup (after article scheduler starts)
+  setTimeout(async () => {
+    const { runKeywordGrievanceFetch } = require('./services/keywordGrievanceSchedulerService');
+    await runKeywordGrievanceFetch({ triggeredBy: 'scheduler' });
+  }, 3 * 60 * 1000);
+
+  setInterval(async () => {
+    const { runKeywordGrievanceFetch } = require('./services/keywordGrievanceSchedulerService');
+    await runKeywordGrievanceFetch({ triggeredBy: 'scheduler' });
+  }, INTERVAL_MS);
+};
+
+// ─── Keyword Article Scheduler ─────────────────────────────────────────────
+const startKeywordArticleScheduler = () => {
+  const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+  // First run 2 minutes after startup (let DB settle)
+  setTimeout(async () => {
+    const { runKeywordArticleFetch } = require('./services/keywordArticleService');
+    await runKeywordArticleFetch({ triggeredBy: 'scheduler' });
+  }, 2 * 60 * 1000);
+
+  setInterval(async () => {
+    const { runKeywordArticleFetch } = require('./services/keywordArticleService');
+    await runKeywordArticleFetch({ triggeredBy: 'scheduler' });
+  }, INTERVAL_MS);
+};
+
 // ─── Content Availability Checker ──────────────────────────────────────────
 let availabilityCheckerRunning = false;
 
@@ -459,6 +491,12 @@ const startServer = async () => {
 
   // Start Content Availability Checker
   startAvailabilityChecker();
+
+  // Start Keyword Article Scheduler — every 1 hour, fetches past-24h articles per keyword
+  startKeywordArticleScheduler();
+
+  // Start Keyword Grievance Scheduler — every 1 hour, RapidAPI fetch + Ollama pipeline per keyword
+  startKeywordGrievanceScheduler();
 
   // Retweet Sync Scheduler — DISABLED (now on-demand via Frequent Engagers button)
   // try {

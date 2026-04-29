@@ -2,7 +2,7 @@ import React from 'react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import {
     Heart, MessageCircle, Repeat2, BarChart3, Bookmark,
-    BadgeCheck, Play, Download, Loader2, Eye, Shield, Tag, MapPin, AlertTriangle
+    BadgeCheck, Play, Download, Loader2, Eye, Shield, Tag, MapPin, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -93,6 +93,13 @@ const PlatformBadge = ({ platform }) => {
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FF0000] text-white">
                 <YouTubePlatformLogo className="h-2.5 w-2.5" />
                 YouTube
+            </span>
+        );
+    }
+    if (p === 'rss') {
+        return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-500 text-white">
+                RSS
             </span>
         );
     }
@@ -829,6 +836,7 @@ export const GrievanceCard = ({ grievance, onAction, getProxiedMediaUrl, downloa
     const isWA = platform === 'whatsapp';
     const isIG = platform === 'instagram';
     const isYT = platform === 'youtube';
+    const isRSS = platform === 'rss';
     const isDownloading = !!downloadState?.downloading;
     const downloadProgress = Math.max(0, Math.min(100, Math.round(downloadState?.progress || 0)));
 
@@ -870,6 +878,51 @@ export const GrievanceCard = ({ grievance, onAction, getProxiedMediaUrl, downloa
                 {isWA && <WhatsAppLayout grievance={grievance} getProxiedMediaUrl={getProxiedMediaUrl} onAction={onAction} downloadState={downloadState} />}
                 {isIG && <XLayout grievance={grievance} getProxiedMediaUrl={getProxiedMediaUrl} onAction={onAction} downloadState={downloadState} />}
                 {isYT && <XLayout grievance={grievance} getProxiedMediaUrl={getProxiedMediaUrl} onAction={onAction} downloadState={downloadState} />}
+                {isRSS && (() => {
+                    const media = grievance.content?.media || [];
+                    // content.text = headline only; full_text = headline + scraped body
+                    const title = grievance.content?.text || '';
+                    const fullText = grievance.content?.full_text || '';
+                    // Body summary: everything after the headline in full_text
+                    const bodyPart = fullText.startsWith(title + '. ')
+                        ? fullText.slice(title.length + 2).trim()
+                        : (fullText !== title ? fullText : '');
+                    const summary = bodyPart.slice(0, 280);
+                    const source = grievance.posted_by?.display_name || grievance.posted_by?.handle || '';
+                    const imgItem = media.find(m => m.type === 'photo' && (m.url || m.media_url));
+                    const imgUrl = imgItem ? getProxiedMediaUrl(imgItem.url || imgItem.media_url) : null;
+                    return (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex gap-3">
+                                {imgUrl && (
+                                    <img
+                                        src={imgUrl}
+                                        alt=""
+                                        className="w-24 h-24 rounded-lg object-cover shrink-0 border border-slate-100"
+                                        onError={e => { e.currentTarget.style.display = 'none'; }}
+                                    />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        {source && <span className="text-[11px] font-semibold text-orange-600 truncate">{source}</span>}
+                                        <span className="text-[11px] text-slate-400">{timeAgo(grievance.post_date)}</span>
+                                    </div>
+                                    <a
+                                        href={grievance.tweet_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={e => e.stopPropagation()}
+                                        className="text-[14px] font-semibold text-slate-900 hover:text-blue-600 leading-snug line-clamp-2 block"
+                                    >
+                                        {title}
+                                        <ExternalLink className="inline h-3 w-3 ml-1 opacity-40" />
+                                    </a>
+                                    {summary && <p className="text-[12px] text-slate-500 leading-relaxed line-clamp-3 mt-0.5">{summary}</p>}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
             </CardContent>
 
             {/* Footer */}

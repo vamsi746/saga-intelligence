@@ -23,6 +23,7 @@ import Sources from './Sources';
 import AccessManagement from './AccessManagement';
 import Transcribe from './Transcribe';
 import PolicyManager from '../components/PolicyManager';
+import AnalyticsTab from '../components/AnalyticsTab';
 import { Badge } from '../components/ui/badge';
 import RichTextEditor from '../components/RichTextEditor';
 import { cn } from '../lib/utils';
@@ -152,8 +153,18 @@ const Settings = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [thresholdsLoading, setThresholdsLoading] = useState(false);
 
+  // Keyword article fetch state
+  const [articleFetchStatus, setArticleFetchStatus] = useState({ isFetching: false, lastFetchedAt: null, lastFetchStatus: 'idle' });
+  const [keywordArticles, setKeywordArticles] = useState([]);
+  const [articlesLoading, setArticlesLoading] = useState(false);
+  const articlePollRef = useRef(null);
 
-  const validTabs = ['general', 'sources', 'keywords', 'templates', 'access', 'policies', 'transcribe'];
+  // Keyword grievance fetch state
+  const [grievanceFetchStatus, setGrievanceFetchStatus] = useState({ isFetching: false, lastFetchedAt: null, lastFetchStatus: 'idle', lastFetchStats: null });
+  const [grievancePlatform, setGrievancePlatform] = useState('all');
+  const grievancePollRef = useRef(null);
+
+  const validTabs = ['rss-fetch', 'grievance-fetch', 'analytics', 'general', 'sources', 'keywords', 'templates', 'access', 'policies', 'transcribe'];
   const tabFromUrl = searchParams.get('tab');
   const initialTab = validTabs.includes(tabFromUrl) ? tabFromUrl : 'general';
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -545,6 +556,118 @@ const Settings = () => {
     }
   };
 
+  // ─── Keyword Article Fetch ──────────────────────────────────────────────
+  const loadArticleFetchStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/keywords/articles/status');
+      setArticleFetchStatus(res.data);
+    } catch (_) {}
+  }, []);
+
+  const loadKeywordArticles = useCallback(async () => {
+    setArticlesLoading(true);
+    try {
+      const res = await api.get('/keywords/articles?limit=50');
+      setKeywordArticles(res.data.articles || []);
+    } catch (_) {
+      toast.error('Failed to load articles');
+    } finally {
+      setArticlesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'rss-fetch') return;
+    loadArticleFetchStatus();
+    loadKeywordArticles();
+  }, [activeTab, loadArticleFetchStatus, loadKeywordArticles]);
+
+  // Poll status while fetch is running
+  useEffect(() => {
+    if (articleFetchStatus.isFetching) {
+      articlePollRef.current = setInterval(async () => {
+        try {
+          const res = await api.get('/keywords/articles/status');
+          setArticleFetchStatus(res.data);
+          if (!res.data.isFetching) {
+            clearInterval(articlePollRef.current);
+            loadKeywordArticles();
+          }
+        } catch (_) {}
+      }, 3000);
+    } else {
+      clearInterval(articlePollRef.current);
+    }
+    return () => clearInterval(articlePollRef.current);
+  }, [articleFetchStatus.isFetching, loadKeywordArticles]);
+
+  const handleFetchNow = async () => {
+    try {
+      await api.post('/keywords/articles/fetch');
+      setArticleFetchStatus(s => ({ ...s, isFetching: true, lastFetchStatus: 'running' }));
+      toast.success('Fetch started');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Fetch failed');
+    }
+  };
+
+  const handleStopFetch = async () => {
+    try {
+      await api.post('/keywords/articles/stop');
+      toast.info('Stop signal sent');
+    } catch (_) {
+      toast.error('Failed to stop');
+    }
+  };
+
+  // ─── Keyword Grievance Fetch ────────────────────────────────────────────
+  const loadGrievanceFetchStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/keywords/grievance-fetch/status');
+      setGrievanceFetchStatus(res.data);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'grievance-fetch') return;
+    loadGrievanceFetchStatus();
+  }, [activeTab, loadGrievanceFetchStatus]);
+
+  useEffect(() => {
+    if (grievanceFetchStatus.isFetching) {
+      grievancePollRef.current = setInterval(async () => {
+        try {
+          const res = await api.get('/keywords/grievance-fetch/status');
+          setGrievanceFetchStatus(res.data);
+          if (!res.data.isFetching) clearInterval(grievancePollRef.current);
+        } catch (_) {}
+      }, 4000);
+    } else {
+      clearInterval(grievancePollRef.current);
+    }
+    return () => clearInterval(grievancePollRef.current);
+  }, [grievanceFetchStatus.isFetching]);
+
+  const handleGrievanceFetchNow = async () => {
+    try {
+      const params = grievancePlatform !== 'all' ? `?platform=${grievancePlatform}` : '';
+      await api.post(`/keywords/grievance-fetch/fetch${params}`);
+      setGrievanceFetchStatus(s => ({ ...s, isFetching: true, lastFetchStatus: 'running' }));
+      toast.success('Grievance fetch started');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to start');
+    }
+  };
+
+  const handleStopGrievanceFetch = async () => {
+    try {
+      await api.post('/keywords/grievance-fetch/stop');
+      toast.info('Stop signal sent — current fetch will finish then stop');
+    } catch (_) {
+      toast.error('Failed to stop');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
@@ -610,14 +733,17 @@ const Settings = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="h-10 p-1 bg-muted/50 rounded-lg">
-          <TabsTrigger value="general" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Configuration</TabsTrigger>
-          <TabsTrigger value="sources" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Profiles</TabsTrigger>
-          <TabsTrigger value="keywords" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Keywords</TabsTrigger>
-          <TabsTrigger value="templates" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Report Templates</TabsTrigger>
-          <TabsTrigger value="access" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Access Management</TabsTrigger>
-          <TabsTrigger value="policies" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Policy Manager</TabsTrigger>
-          <TabsTrigger value="transcribe" className="text-xs px-5 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Transcribe</TabsTrigger>
+        <TabsList className="h-10 p-1 bg-muted/50 rounded-lg flex-wrap">
+          <TabsTrigger value="rss-fetch" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">RSS Fetch</TabsTrigger>
+          <TabsTrigger value="grievance-fetch" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Grievance Fetch</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Analytics</TabsTrigger>
+          <TabsTrigger value="general" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Configuration</TabsTrigger>
+          <TabsTrigger value="sources" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Profiles</TabsTrigger>
+          <TabsTrigger value="keywords" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Keywords</TabsTrigger>
+          <TabsTrigger value="templates" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Report Templates</TabsTrigger>
+          <TabsTrigger value="access" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Access Management</TabsTrigger>
+          <TabsTrigger value="policies" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Policy Manager</TabsTrigger>
+          <TabsTrigger value="transcribe" className="text-xs px-4 py-2 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=active]:font-semibold">Transcribe</TabsTrigger>
         </TabsList>
 
       {/* Unsaved changes dialog */}
@@ -999,8 +1125,170 @@ const Settings = () => {
           <Sources />
         </TabsContent>
 
+        {/* ═══ RSS Fetch Tab ═══ */}
+        <TabsContent value="rss-fetch" className="mt-2">
+          <Card className="p-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                    <Activity className="h-3.5 w-3.5 text-primary" />
+                    RSS Fetch
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Fetches past-24h Google News articles for each keyword. Runs every 1 hour automatically.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {articleFetchStatus.isFetching ? (
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={handleStopFetch}>
+                      <X className="h-3 w-3 mr-1" /> Stop
+                    </Button>
+                  ) : (
+                    <Button size="sm" className="h-7 px-2 text-xs" onClick={handleFetchNow}>
+                      <Zap className="h-3 w-3 mr-1" /> Fetch Now
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={loadKeywordArticles} disabled={articlesLoading}>
+                    <Activity className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-md bg-secondary/20 px-3 py-2 text-[10px] text-muted-foreground">
+                <span className={`inline-flex items-center gap-1 font-medium ${
+                  articleFetchStatus.isFetching ? 'text-blue-600' :
+                  articleFetchStatus.lastFetchStatus === 'done' ? 'text-green-600' :
+                  articleFetchStatus.lastFetchStatus === 'stopped' ? 'text-amber-600' :
+                  articleFetchStatus.lastFetchStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'
+                }`}>
+                  {articleFetchStatus.isFetching && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {articleFetchStatus.isFetching ? 'Running…' :
+                   articleFetchStatus.lastFetchStatus === 'done' ? 'Done' :
+                   articleFetchStatus.lastFetchStatus === 'stopped' ? 'Stopped' :
+                   articleFetchStatus.lastFetchStatus === 'error' ? 'Error' : 'Idle'}
+                </span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>Last run: {articleFetchStatus.lastFetchedAt ? new Date(articleFetchStatus.lastFetchedAt).toLocaleTimeString() : '—'}</span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>Next auto: every 1 hr</span>
+              </div>
+              {articlesLoading ? (
+                <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              ) : keywordArticles.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">No articles fetched yet. Click "Fetch Now" or wait for the hourly run.</p>
+              ) : (
+                <ScrollArea className="h-[420px]">
+                  <div className="space-y-2 pr-2">
+                    {keywordArticles.map((article) => (
+                      <div key={article._id || article.url} className="rounded-md border bg-secondary/10 px-3 py-2 space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <a href={article.url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium leading-snug hover:text-primary hover:underline line-clamp-2">{article.title}</a>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">{article.keyword}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>{article.source}</span>
+                          <Separator orientation="vertical" className="h-2.5" />
+                          <span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : '—'}</span>
+                          {article.sentiment && (
+                            <>
+                              <Separator orientation="vertical" className="h-2.5" />
+                              <span className="capitalize">{article.sentiment}</span>
+                            </>
+                          )}
+                          {article.location && (
+                            <>
+                              <Separator orientation="vertical" className="h-2.5" />
+                              <span>{article.location}</span>
+                            </>
+                          )}
+                        </div>
+                        {article.summary && <p className="text-[10px] text-muted-foreground line-clamp-2">{article.summary}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* ═══ Grievance Fetch Tab ═══ */}
+        <TabsContent value="grievance-fetch" className="mt-2">
+          <Card className="p-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 text-destructive" />
+                    Grievance Fetch
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Fetches posts from X &amp; Facebook via RapidAPI for each keyword, then runs Ollama analysis + intention detection. Runs every 1 hour automatically.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={grievancePlatform} onValueChange={setGrievancePlatform}>
+                    <SelectTrigger className="h-7 text-xs w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Platforms</SelectItem>
+                      <SelectItem value="x">X / Twitter</SelectItem>
+                      <SelectItem value="facebook">Facebook</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {grievanceFetchStatus.isFetching ? (
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={handleStopGrievanceFetch}>
+                      <X className="h-3 w-3 mr-1" /> Stop
+                    </Button>
+                  ) : (
+                    <Button size="sm" className="h-7 px-2 text-xs bg-destructive/90 hover:bg-destructive text-white" onClick={handleGrievanceFetchNow}>
+                      <Zap className="h-3 w-3 mr-1" /> Fetch Now
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={loadGrievanceFetchStatus}>
+                    <Activity className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 rounded-md bg-secondary/20 px-3 py-2 text-[10px] text-muted-foreground">
+                <span className={`inline-flex items-center gap-1 font-medium ${
+                  grievanceFetchStatus.isFetching ? 'text-blue-600' :
+                  grievanceFetchStatus.lastFetchStatus === 'done' ? 'text-green-600' :
+                  grievanceFetchStatus.lastFetchStatus === 'stopped' ? 'text-amber-600' :
+                  grievanceFetchStatus.lastFetchStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'
+                }`}>
+                  {grievanceFetchStatus.isFetching && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {grievanceFetchStatus.isFetching ? 'Running — fetching + Ollama analysis…' :
+                   grievanceFetchStatus.lastFetchStatus === 'done' ? 'Done' :
+                   grievanceFetchStatus.lastFetchStatus === 'stopped' ? 'Stopped' :
+                   grievanceFetchStatus.lastFetchStatus === 'error' ? 'Error' : 'Idle'}
+                </span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>Last run: {grievanceFetchStatus.lastFetchedAt ? new Date(grievanceFetchStatus.lastFetchedAt).toLocaleTimeString() : '—'}</span>
+                {grievanceFetchStatus.lastFetchStats && (
+                  <>
+                    <Separator orientation="vertical" className="h-3" />
+                    <span className="text-green-600 font-medium">+{grievanceFetchStatus.lastFetchStats.newGrievances ?? 0} new grievances</span>
+                    <Separator orientation="vertical" className="h-3" />
+                    <span>{grievanceFetchStatus.lastFetchStats.keywordsSearched ?? 0} keywords searched</span>
+                  </>
+                )}
+                <Separator orientation="vertical" className="h-3" />
+                <span>Next auto: every 1 hr</span>
+              </div>
+              <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/50 px-3 py-2.5 text-[10px] text-muted-foreground space-y-1">
+                <p className="font-medium text-slate-600">Pipeline per keyword:</p>
+                <p>1. RapidAPI X search → tweets &nbsp;|&nbsp; 2. RapidAPI Facebook search → posts</p>
+                <p>3. Save as Grievance documents &nbsp;|&nbsp; 4. Ollama → category, sentiment, risk, intention</p>
+                <p>5. Person detection + location &nbsp;|&nbsp; 6. Legal sections → results in Grievances page</p>
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* ═══ Analytics Tab ═══ */}
+        <TabsContent value="analytics" className="mt-2">
+          <AnalyticsTab />
+        </TabsContent>
+
         {/* Keywords */}
-        <TabsContent value="keywords" className="space-y-4">
+        <TabsContent value="keywords" className="space-y-3">
+          {/* Keywords management card */}
           <Card className="p-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between">

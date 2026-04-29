@@ -1,13 +1,13 @@
 /**
- * Political Data — Single source of truth for all party / leader information.
+ * Political Data — Andhra Pradesh NDA Government (TDP + Janasena + BJP)
+ *
+ * OUR SIDE  : TDP (dominant) + Janasena + BJP (AP unit) — NDA coalition
+ * OPPOSITION: YSRCP/YCP (primary), Congress (minor)
  *
  * Used by:
  *   - personDetectionService  (entity resolution by name/handle)
  *   - llmService               (dynamic prompt context: OUR + OPPOSITION)
- *   - grievanceController      (handle-based filtering across tagged + identified leaders)
- *
- * Adding/removing a leader anywhere in this file automatically flows through
- * detection, LLM prompting, storage, and UI filters — no other file needs editing.
+ *   - grievanceController      (handle-based filtering)
  */
 
 const normalizeHandle = (h) =>
@@ -20,7 +20,7 @@ const tagLeaders = (leaders, party, side) =>
     return {
       ...l,
       party,
-      side, // 'ours' | 'opposition'
+      side,
       primary_handle,
       primary_handle_normalized: normalizeHandle(primary_handle),
       handles_normalized: handles.map(normalizeHandle).filter(Boolean)
@@ -28,142 +28,409 @@ const tagLeaders = (leaders, party, side) =>
   });
 
 // ─────────────────────────────────────────────────────────
-// OUR PARTY (Client) — INC, ruling party in Telangana
+// OUR PARTY (Client) — TDP, ruling party in Andhra Pradesh (NDA)
 // ─────────────────────────────────────────────────────────
 const OUR_PARTY = {
-  id: 'inc',
-  name: 'INC',
-  full_name: 'Indian National Congress',
-  alliance: 'INDIA',
+  id: 'tdp',
+  name: 'TDP',
+  full_name: 'Telugu Desam Party',
+  alliance: 'NDA',
   role: 'ruling',
-  state: 'Telangana',
-  chief: 'A. Revanth Reddy'
+  state: 'Andhra Pradesh',
+  chief: 'N. Chandrababu Naidu'
 };
 
-const _CABINET_RAW = [
-  { id: 'revanth-reddy', name: 'A. Revanth Reddy', shortName: 'Revanth Reddy', role: 'Chief Minister', constituency: 'Kodangal', district: 'Vikarabad', handles: ['@revanth_anumula', '@TelanganaCMO'] },
-  { id: 'bhatti-vikramarka', name: 'Mallu Bhatti Vikramarka', shortName: 'Bhatti Vikramarka', role: 'Deputy Chief Minister', constituency: 'Madhira', district: 'Khammam', handles: ['@Bhatti_Vikramarka'] },
-  { id: 'sridhar-babu', name: 'D. Sridhar Babu', shortName: 'Sridhar Babu', role: 'Cabinet Minister', constituency: 'Manthani', district: 'Peddapalli', handles: ['@dudilla_sridhar'] },
-  { id: 'venkat-reddy', name: 'Komatireddy Venkat Reddy', shortName: 'Venkat Reddy', role: 'Cabinet Minister', constituency: 'Nalgonda', district: 'Nalgonda', handles: ['@v_komatireddy'] },
-  { id: 'ponnam-prabhakar', name: 'Ponnam Prabhakar', shortName: 'Ponnam Prabhakar', role: 'Cabinet Minister', constituency: 'Husnabad', district: 'Peddapalli', handles: ['@PonnamLOKSABHA'] },
-  { id: 'tummala', name: 'Tummala Nageshwara Rao', shortName: 'Tummala Nageshwara', role: 'Cabinet Minister', constituency: 'Khammam', district: 'Khammam', handles: ['@Tummala_N_Rao'] },
-  { id: 'uttam-kumar', name: 'N. Uttam Kumar Reddy', shortName: 'Uttam Kumar Reddy', role: 'Cabinet Minister', constituency: 'Huzurnagar', district: 'Suryapet', handles: ['@UttamReddyINC'] },
-  { id: 'jupally', name: 'Jupally Krishna Rao', shortName: 'Jupally Krishna Rao', role: 'Cabinet Minister', constituency: 'Kollapur', district: 'Nagarkurnool', handles: ['@JupallyK'] },
-  { id: 'sirikonda', name: 'Sirikonda Madhu Yashpal Goud', shortName: 'Sirikonda Madhu', role: 'Cabinet Minister', constituency: 'Banswada', district: 'Kamareddy', handles: [] },
-  { id: 'damodar', name: 'Damodar Raja Narasimha', shortName: 'Damodar Narasimha', role: 'Cabinet Minister', constituency: 'Andole', district: 'Sangareddy', handles: ['@DamodarRajaNars'] },
-  { id: 'seethakka', name: 'Danasari Anasuya (Seethakka)', shortName: 'Seethakka', role: 'Cabinet Minister', constituency: 'Mulug', district: 'Mulugu', handles: ['@seethakkaMLA'] },
-  { id: 'gangula', name: 'Gangula Kamalakar', shortName: 'Gangula Kamalakar', role: 'Cabinet Minister', constituency: 'Karimnagar', district: 'Karimnagar', handles: ['@GKamalakarTRS'] },
-  { id: 'konda-surekha', name: 'Konda Surekha', shortName: 'Konda Surekha', role: 'Cabinet Minister', constituency: 'Warangal East', district: 'Hanamkonda', handles: ['@iamKondaSurekha'] },
-  { id: 'naini-reddy', name: 'Naini Rajender Reddy', shortName: 'Naini Rajender', role: 'Cabinet Minister', constituency: 'Warangal West', district: 'Hanamkonda', handles: [] },
-  { id: 'niranjan-reddy', name: 'Singireddy Niranjan Reddy', shortName: 'Niranjan Reddy', role: 'Cabinet Minister', constituency: 'Wanaparthy', district: 'Wanaparthy', handles: ['@NiranjanReddyOf'] },
-  { id: 'puvvada', name: 'Puvvada Ajay Kumar', shortName: 'Puvvada Ajay', role: 'Cabinet Minister', constituency: 'Palair', district: 'Khammam', handles: ['@puvvada_ajay'] },
-  { id: 'chamakura', name: 'Chamakura Malla Reddy', shortName: 'Malla Reddy', role: 'Cabinet Minister', constituency: 'Medchal', district: 'Medchal-Malkajgiri', handles: ['@MallaReddyBrs'] }
+// ─── TDP Cabinet Ministers ────────────────────────────────
+const _TDP_CABINET_RAW = [
+  {
+    id: 'chandrababu-naidu',
+    name: 'N. Chandrababu Naidu',
+    shortName: 'Chandrababu Naidu',
+    aliases: ['CBN', 'Chandrababu', 'Naidu'],
+    role: 'Chief Minister',
+    constituency: 'Kuppam',
+    district: 'Chittoor',
+    handles: ['@ncbn', '@chandrababunaidu']
+  },
+  {
+    id: 'nara-lokesh',
+    name: 'Nara Lokesh',
+    shortName: 'Lokesh',
+    aliases: ['Lokesh', 'Nara Lokesh'],
+    role: 'Cabinet Minister (IT & Education)',
+    constituency: 'Mangalagiri',
+    district: 'Guntur',
+    handles: ['@naralokesh']
+  },
+  {
+    id: 'atchannaidu',
+    name: 'Kinjarapu Atchannaidu',
+    shortName: 'Atchannaidu',
+    aliases: ['Atchannaidu', 'K. Atchannaidu'],
+    role: 'Cabinet Minister (Human Resources)',
+    constituency: 'Narasannapeta',
+    district: 'Srikakulam',
+    handles: ['@KAtchannaidu']
+  },
+  {
+    id: 'nadendla-manohar',
+    name: 'Nadendla Manohar',
+    shortName: 'Nadendla Manohar',
+    role: 'Cabinet Minister (Industries)',
+    constituency: 'Tanuku',
+    district: 'West Godavari',
+    handles: ['@NadendlaManohar']
+  },
+  {
+    id: 'gottipati-ravi',
+    name: 'Gottipati Ravi Kumar',
+    shortName: 'Gottipati Ravi',
+    role: 'Cabinet Minister',
+    constituency: 'Avanigadda',
+    district: 'Krishna',
+    handles: []
+  },
+  {
+    id: 'p-narayana',
+    name: 'P. Narayana',
+    shortName: 'P. Narayana',
+    aliases: ['Narayana Minister'],
+    role: 'Cabinet Minister (Roads & Buildings)',
+    constituency: 'Gudur',
+    district: 'SPSR Nellore',
+    handles: ['@pnarayanaTDP']
+  },
+  {
+    id: 'kolusu-parthasarathy',
+    name: 'Kolusu Parthasarathy',
+    shortName: 'Kolusu Parthasarathy',
+    role: 'Cabinet Minister (Endowments)',
+    constituency: 'Payakaraopeta',
+    district: 'Visakhapatnam',
+    handles: []
+  },
+  {
+    id: 'anagani-satya-prasad',
+    name: 'Anagani Satya Prasad',
+    shortName: 'Anagani',
+    role: 'Cabinet Minister',
+    constituency: 'Yalamanchali',
+    district: 'Visakhapatnam',
+    handles: []
+  },
+  {
+    id: 'vasamsetti-subhash',
+    name: 'Vasamsetti Subhash',
+    shortName: 'Vasamsetti Subhash',
+    role: 'Cabinet Minister',
+    constituency: 'Bobbili',
+    district: 'Vizianagaram',
+    handles: []
+  },
+  {
+    id: 'nimmala-ramanaidu',
+    name: 'Nimmala Ramanaidu',
+    shortName: 'Ramanaidu',
+    role: 'Cabinet Minister',
+    constituency: 'Hindupur',
+    district: 'Sri Sathya Sai',
+    handles: []
+  },
+  {
+    id: 'vangalapudi-anitha',
+    name: 'Vangalapudi Anitha',
+    shortName: 'Vangalapudi Anitha',
+    role: 'Cabinet Minister (Women & Child Welfare)',
+    constituency: 'Bheemunipatnam',
+    district: 'Visakhapatnam',
+    handles: ['@VangalapudiAnit']
+  },
+  {
+    id: 'mandipalli-ramprasad',
+    name: 'Mandipalli Ramprasad Reddy',
+    shortName: 'Mandipalli Ramprasad',
+    role: 'Cabinet Minister (Finance)',
+    constituency: 'Mylavaram',
+    district: 'Krishna',
+    handles: []
+  },
+  {
+    id: 'savitha-mamidi',
+    name: 'Savitha Mamidi',
+    shortName: 'Savitha',
+    role: 'Cabinet Minister',
+    constituency: 'Rajam',
+    district: 'Srikakulam',
+    handles: []
+  },
+  {
+    id: 'kollu-ravindra',
+    name: 'Kollu Ravindra',
+    shortName: 'Kollu Ravindra',
+    role: 'Cabinet Minister',
+    constituency: 'Rajahmundry Rural',
+    district: 'East Godavari',
+    handles: []
+  }
 ];
 
-const _CONGRESS_MLAS_RAW = [
-  { id: 'vamshi-krishna-achampet', name: 'Chikkudu Vamshi Krishna', shortName: 'Vamshi Krishna', role: 'MLA', constituency: 'Achampet', district: 'Nagarkurnool', handles: [] },
-  { id: 'ilaiah-beerla', name: 'Ilaiah Beerla', shortName: 'Ilaiah Beerla', role: 'MLA', constituency: 'Alair', district: 'Yadadri', handles: [] },
-  { id: 'adinarayana-jare', name: 'Adinarayana Jare', shortName: 'Adinarayana Jare', role: 'MLA', constituency: 'Aswaraopeta', district: 'Bhadradri Kothagudem', handles: [] },
-  { id: 'gaddam-vinod', name: 'Gaddam Vinod', shortName: 'Gaddam Vinod', role: 'MLA', constituency: 'Bellampalli', district: 'Mancherial', handles: [] },
-  { id: 'anil-kumar-bhongir', name: 'Kumbam Anil Kumar Reddy', shortName: 'Anil Kumar Reddy', role: 'MLA', constituency: 'Bhongir', district: 'Yadadri', handles: [] },
-  { id: 'satyanarayana-bhupalpalle', name: 'Gandra Satyanarayana Rao', shortName: 'Gandra Satyanarayana', role: 'MLA', constituency: 'Bhupalpalle', district: 'Jayashankar Bhupalpally', handles: [] },
-  { id: 'sudarshan-bodhan', name: 'P. Sudarshan Reddy', shortName: 'Sudarshan Reddy', role: 'MLA', constituency: 'Bodhan', district: 'Nizamabad', handles: [] },
-  { id: 'gaddam-vivekanand', name: 'Gaddam Vivekanand', shortName: 'Gaddam Vivekanand', role: 'MLA', constituency: 'Chennur', district: 'Mancherial', handles: [] },
-  { id: 'medipally-sathyam', name: 'Medipally Sathyam', shortName: 'Medipally Sathyam', role: 'MLA', constituency: 'Choppadandi', district: 'Karimnagar', handles: [] },
-  { id: 'balu-naik-devarakonda', name: 'Balu Naik Nenavath', shortName: 'Balu Naik', role: 'MLA', constituency: 'Devarakonda', district: 'Nalgonda', handles: [] },
-  { id: 'gmr-devarkadra', name: 'Gavinolla Madhusudan Reddy', shortName: 'GMR Devarkadra', role: 'MLA', constituency: 'Devarkadra', district: 'Mahabubnagar', handles: [] },
-  { id: 'adluri-laxman', name: 'Adluri Laxman Kumar', shortName: 'Adluri Laxman', role: 'MLA', constituency: 'Dharmapuri', district: 'Jagtial', handles: [] },
-  { id: 'jatoth-dornakal', name: 'Jatoth Ram Chander Naik', shortName: 'Jatoth Ram Naik', role: 'MLA', constituency: 'Dornakal', district: 'Mahabubabad', handles: [] },
-  { id: 'malreddy-ibrahimpatnam', name: 'Malreddy Ranga Reddy', shortName: 'Malreddy Ranga', role: 'MLA', constituency: 'Ibrahimpatnam', district: 'Rangareddy', handles: [] },
-  { id: 'anirudh-jadcherla', name: 'Anirudh Reddy Janampalli', shortName: 'Anirudh Reddy', role: 'MLA', constituency: 'Jadcherla', district: 'Mahabubnagar', handles: [] },
-  { id: 'laxmikantha-jukkal', name: 'Laxmi Kantha Rao Thota', shortName: 'Laxmikantha Rao', role: 'MLA', constituency: 'Jukkal', district: 'Kamareddy', handles: [] },
-  { id: 'narayan-kalwakurthy', name: 'Narayan Reddy Kasireddy', shortName: 'Narayan Reddy', role: 'MLA', constituency: 'Kalwakurthy', district: 'Nagarkurnool', handles: [] },
-  { id: 'vedma-khanapur', name: 'Vedma Bhojju', shortName: 'Vedma Bhojju', role: 'MLA', constituency: 'Khanapur', district: 'Nirmal', handles: [] },
-  { id: 'padmavathi-kodad', name: 'Nalamada Padmavathi Reddy', shortName: 'Padmavathi Reddy', role: 'MLA', constituency: 'Kodad', district: 'Suryapet', handles: [] },
-  { id: 'murali-naik-mahabubabad', name: 'Dr. Murali Naik Bhukya', shortName: 'Murali Naik', role: 'MLA', constituency: 'Mahabubabad', district: 'Mahabubabad', handles: [] },
-  { id: 'srinivas-mahbubnagar', name: 'Yennam Srinivas Reddy', shortName: 'Yennam Srinivas', role: 'MLA', constituency: 'Mahbubnagar', district: 'Mahabubnagar', handles: [] },
-  { id: 'vakiti-makthal', name: 'Vakiti Srihari', shortName: 'Vakiti Srihari', role: 'MLA', constituency: 'Makthal', district: 'Narayanpet', handles: [] },
-  { id: 'kavvampally-manakondur', name: 'Dr. Kavvampally Satyanarayana', shortName: 'Kavvampally', role: 'MLA', constituency: 'Manakondur', district: 'Rajanna Sircilla', handles: [] },
-  { id: 'premsagar-mancherial', name: 'Kokkirala Premsagar Rao', shortName: 'Premsagar Rao', role: 'MLA', constituency: 'Mancherial', district: 'Mancherial', handles: [] },
-  { id: 'mynampally-medak', name: 'Mynampally Rohith', shortName: 'Mynampally Rohith', role: 'MLA', constituency: 'Medak', district: 'Medak', handles: [] },
-  { id: 'bathula-miryalaguda', name: 'Bathula Laxma Reddy', shortName: 'Bathula Laxma', role: 'MLA', constituency: 'Miryalaguda', district: 'Nalgonda', handles: [] },
-  { id: 'raj-gopal-munugode', name: 'Komatireddy Raj Gopal Reddy', shortName: 'Raj Gopal Reddy', role: 'MLA', constituency: 'Munugode', district: 'Nalgonda', handles: [] },
-  { id: 'jayaveer-nagarjunasagar', name: 'Kunduru Jayaveer', shortName: 'Kunduru Jayaveer', role: 'MLA', constituency: 'Nagarjuna Sagar', district: 'Nalgonda', handles: [] },
-  { id: 'rajesh-nagarkurnool', name: 'Dr. Kuchkulla Rajesh Reddy', shortName: 'Rajesh Reddy', role: 'MLA', constituency: 'Nagarkurnool', district: 'Nagarkurnool', handles: [] },
-  { id: 'veeresham-nakrekal', name: 'Vemula Veeresham', shortName: 'Vemula Veeresham', role: 'MLA', constituency: 'Nakrekal', district: 'Nalgonda', handles: [] },
-  { id: 'sanjeeva-narayankhed', name: 'Patlolla Sanjeeva Reddy', shortName: 'Sanjeeva Reddy', role: 'MLA', constituency: 'Narayankhed', district: 'Sangareddy', handles: [] },
-  { id: 'parnika-narayanpet', name: 'Chittem Parnika Reddy', shortName: 'Parnika Reddy', role: 'MLA', constituency: 'Narayanpet', district: 'Narayanpet', handles: [] },
-  { id: 'madhava-narsampet', name: 'Donthi Madhava Reddy', shortName: 'Madhava Reddy', role: 'MLA', constituency: 'Narsampet', district: 'Warangal', handles: [] },
-  { id: 'bhoopathi-nizamabad', name: 'Bhoopathi Reddy Rekulapally', shortName: 'Bhoopathi Reddy', role: 'MLA', constituency: 'Nizamabad Rural', district: 'Nizamabad', handles: [] },
-  { id: 'ponguleti-palair', name: 'Ponguleti Srinivasa Reddy', shortName: 'Ponguleti Srinivasa', role: 'MLA', constituency: 'Palair', district: 'Khammam', handles: [] },
-  { id: 'yashaswini-palakurthi', name: 'Yashaswini Mamidala', shortName: 'Yashaswini', role: 'MLA', constituency: 'Palakurthi', district: 'Suryapet', handles: [] },
-  { id: 'rammohan-pargi', name: 'Tammannagari Ram Mohan Reddy', shortName: 'Ram Mohan Reddy', role: 'MLA', constituency: 'Pargi', district: 'Vikarabad', handles: [] },
-  { id: 'prakash-parkal', name: 'Revuri Prakash Reddy', shortName: 'Prakash Reddy', role: 'MLA', constituency: 'Parkal', district: 'Hanamkonda', handles: [] },
-  { id: 'vijayaramana-peddapalle', name: 'Chinthakunta Vijaya Ramana Rao', shortName: 'Vijaya Ramana Rao', role: 'MLA', constituency: 'Peddapalle', district: 'Peddapalli', handles: [] },
-  { id: 'payam-pinapaka', name: 'Payam Venkateswarlu', shortName: 'Payam Venkateswarlu', role: 'MLA', constituency: 'Pinapaka', district: 'Bhadradri Kothagudem', handles: [] },
-  { id: 'makkan-ramagundam', name: 'Makkan Singh Raj Thakur', shortName: 'Makkan Singh', role: 'MLA', constituency: 'Ramagundam', district: 'Peddapalli', handles: [] },
-  { id: 'ragamayee-sathupalle', name: 'Matta Ragamayee', shortName: 'Matta Ragamayee', role: 'MLA', constituency: 'Sathupalle', district: 'Khammam', handles: [] },
-  { id: 'shankaraiah-shadnagar', name: 'K. Shankaraiah', shortName: 'K. Shankaraiah', role: 'MLA', constituency: 'Shadnagar', district: 'Rangareddy', handles: [] },
-  { id: 'manohar-tandur', name: 'B. Manohar Reddy', shortName: 'Manohar Reddy', role: 'MLA', constituency: 'Tandur', district: 'Vikarabad', handles: [] },
-  { id: 'samel-thungathurthi', name: 'Mandula Samel', shortName: 'Mandula Samel', role: 'MLA', constituency: 'Thungathurthi', district: 'Suryapet', handles: [] },
-  { id: 'aadi-vemulawada', name: 'Aadi Srinivas', shortName: 'Aadi Srinivas', role: 'MLA', constituency: 'Vemulawada', district: 'Rajanna Sircilla', handles: [] },
-  { id: 'prasad-vikarabad', name: 'Gaddam Prasad Kumar', shortName: 'Gaddam Prasad', role: 'MLA', constituency: 'Vikarabad', district: 'Vikarabad', handles: [] },
-  { id: 'megha-wanaparthy', name: 'Megha Reddy Tudi', shortName: 'Megha Reddy', role: 'MLA', constituency: 'Wanaparthy', district: 'Wanaparthy', handles: [] },
-  { id: 'nagaraj-waradhanapet', name: 'K.R. Nagaraj', shortName: 'K.R. Nagaraj', role: 'MLA', constituency: 'Waradhanapet', district: 'Hanamkonda', handles: [] },
-  { id: 'ramdas-wyra', name: 'Ramdas Maloth', shortName: 'Ramdas Maloth', role: 'MLA', constituency: 'Wyra', district: 'Khammam', handles: [] },
-  { id: 'kanakaiah-yellandu', name: 'Koram Kanakaiah', shortName: 'Koram Kanakaiah', role: 'MLA', constituency: 'Yellandu', district: 'Bhadradri Kothagudem', handles: [] }
+// ─── Prominent TDP MLAs & MPs ─────────────────────────────
+const _TDP_MLAS_RAW = [
+  {
+    id: 'rammohan-naidu',
+    name: 'Kinjarapu Ram Mohan Naidu',
+    shortName: 'Ram Mohan Naidu',
+    aliases: ['Ram Mohan Naidu'],
+    role: 'Union Minister (Civil Aviation)',
+    constituency: 'Srikakulam',
+    district: 'Srikakulam',
+    handles: ['@RamMohanNaiduTW']
+  },
+  {
+    id: 'pemmasani-cs',
+    name: 'Pemmasani Chandra Sekhar',
+    shortName: 'Pemmasani Chandra Sekhar',
+    role: 'MP',
+    constituency: 'Guntur',
+    district: 'Guntur',
+    handles: []
+  },
+  {
+    id: 'srinivasa-varma',
+    name: 'Srinivasa Varma',
+    shortName: 'Srinivasa Varma',
+    role: 'TDP Leader',
+    constituency: null,
+    district: null,
+    handles: []
+  },
+  {
+    id: 'devineni-umamaheswara',
+    name: 'Devineni Umamaheswara Rao',
+    shortName: 'Devineni Uma',
+    aliases: ['Devineni Uma'],
+    role: 'TDP Senior Leader',
+    constituency: 'Vijayawada West',
+    district: 'NTR',
+    handles: ['@DevineniUma']
+  },
+  {
+    id: 'chintakayala-vijaya',
+    name: 'Chintakayala Vijaya',
+    shortName: 'Chintakayala Vijaya',
+    role: 'MLA',
+    constituency: 'Kuppam',
+    district: 'Chittoor',
+    handles: []
+  }
 ];
 
-const CABINET_MINISTERS = tagLeaders(_CABINET_RAW, 'INC', 'ours');
-const CONGRESS_MLAS = tagLeaders(_CONGRESS_MLAS_RAW, 'INC', 'ours');
-const OUR_LEADERS = [...CABINET_MINISTERS, ...CONGRESS_MLAS];
+// ─── Janasena Leaders (NDA Ally) ──────────────────────────
+const _JANASENA_LEADERS_RAW = [
+  {
+    id: 'pawan-kalyan',
+    name: 'Pawan Kalyan',
+    shortName: 'Pawan Kalyan',
+    aliases: ['Pawan', 'Power Star', 'PK'],
+    role: 'Deputy Chief Minister',
+    constituency: 'Pithapuram',
+    district: 'East Godavari',
+    handles: ['@PawanKalyan', '@JanaSenaParty']
+  },
+  {
+    id: 'tg-bharat',
+    name: 'T.G. Bharat',
+    shortName: 'TG Bharat',
+    aliases: ['TG Bharat', 'Bharat'],
+    role: 'Cabinet Minister (Tourism)',
+    constituency: 'Tuni',
+    district: 'East Godavari',
+    handles: ['@TGBharat_JSP']
+  },
+  {
+    id: 'dola-bala',
+    name: 'Dola Sree Bala Veeranjaneya Swamy',
+    shortName: 'Dola Bala',
+    role: 'Cabinet Minister',
+    constituency: 'Narsipatnam',
+    district: 'Visakhapatnam',
+    handles: []
+  },
+  {
+    id: 'nadendla-manohar-jsn',
+    name: 'Nadendla Manohar',
+    shortName: 'Nadendla',
+    role: 'Janasena Senior Leader',
+    constituency: null,
+    district: null,
+    handles: []
+  }
+];
+
+// ─── BJP AP Leaders (NDA Ally) ────────────────────────────
+const _BJP_AP_LEADERS_RAW = [
+  {
+    id: 'purandeswari',
+    name: 'D. Purandeswari',
+    shortName: 'Purandeswari',
+    aliases: ['Purandeswari', 'Daggubati Purandeswari'],
+    role: 'AP BJP President / MP',
+    constituency: 'Rajahmundry',
+    district: 'East Godavari',
+    handles: ['@D_Purandeswari']
+  },
+  {
+    id: 'vishnuvardhan-reddy',
+    name: 'S. Vishnuvardhan Reddy',
+    shortName: 'Vishnuvardhan Reddy',
+    role: 'BJP MLA',
+    constituency: 'Kurnool',
+    district: 'Kurnool',
+    handles: []
+  }
+];
+
+const TDP_CABINET    = tagLeaders(_TDP_CABINET_RAW,    'TDP',      'ours');
+const TDP_MLAS       = tagLeaders(_TDP_MLAS_RAW,       'TDP',      'ours');
+const JANASENA_LEADERS = tagLeaders(_JANASENA_LEADERS_RAW, 'Janasena', 'ours');
+const BJP_AP_LEADERS = tagLeaders(_BJP_AP_LEADERS_RAW, 'BJP',      'ours');
+
+const CABINET_MINISTERS = [...TDP_CABINET, ...JANASENA_LEADERS.slice(0, 3), ...BJP_AP_LEADERS];
+const OUR_LEADERS = [...TDP_CABINET, ...TDP_MLAS, ...JANASENA_LEADERS, ...BJP_AP_LEADERS];
 
 // ─────────────────────────────────────────────────────────
-// OPPOSITION PARTIES — extend freely, downstream auto-adapts
+// OPPOSITION PARTIES — YSRCP (primary) + Congress (minor)
 // ─────────────────────────────────────────────────────────
-const _BRS_LEADERS_RAW = [
-  { id: 'kcr', name: 'K. Chandrashekar Rao', shortName: 'KCR', aliases: ['KCR', 'Chandrashekar Rao'], role: 'Former CM / BRS Chief', constituency: 'Gajwel', district: 'Siddipet', handles: ['@KCRTalksToYou'] },
-  { id: 'ktr', name: 'K. T. Rama Rao', shortName: 'KTR', aliases: ['KTR', 'Rama Rao'], role: 'BRS Working President', constituency: 'Sircilla', district: 'Rajanna Sircilla', handles: ['@KTRBRS'] },
-  { id: 'harish-rao', name: 'T. Harish Rao', shortName: 'Harish Rao', aliases: ['Harish Rao'], role: 'BRS Senior Leader', constituency: 'Siddipet', district: 'Siddipet', handles: ['@BRSHarish'] },
-  { id: 'kavitha', name: 'K. Kavitha', shortName: 'Kavitha', aliases: ['K Kavitha'], role: 'MLC', constituency: 'Nizamabad', district: 'Nizamabad', handles: ['@RaoKavitha'] }
+const _YSRCP_LEADERS_RAW = [
+  {
+    id: 'jagan-mohan-reddy',
+    name: 'Y.S. Jagan Mohan Reddy',
+    shortName: 'Jagan',
+    aliases: ['Jagan Reddy', 'Jagan Mohan', 'YSRCP Chief', 'YCP Chief'],
+    role: 'Former CM / YSRCP President',
+    constituency: 'Pulivendula',
+    district: 'YSR Kadapa',
+    handles: ['@ysjagan']
+  },
+  {
+    id: 'vijayasai-reddy',
+    name: 'V. Vijayasai Reddy',
+    shortName: 'Vijayasai Reddy',
+    aliases: ['Vijayasai Reddy'],
+    role: 'YSRCP MP (Rajya Sabha)',
+    constituency: null,
+    district: null,
+    handles: ['@vvrsec']
+  },
+  {
+    id: 'ambati-rambabu',
+    name: 'Ambati Rambabu',
+    shortName: 'Ambati Rambabu',
+    aliases: ['Ambati'],
+    role: 'YSRCP MLA',
+    constituency: 'Sattenapalle',
+    district: 'Palnadu',
+    handles: ['@ambatirambabu']
+  },
+  {
+    id: 'botsa-satyanarayana',
+    name: 'Botsa Satyanarayana',
+    shortName: 'Botsa',
+    aliases: ['Botsa Satyanarayana', 'Botsa'],
+    role: 'YSRCP Senior Leader',
+    constituency: 'Bhimili',
+    district: 'Visakhapatnam',
+    handles: ['@BotsaSatyam']
+  },
+  {
+    id: 'roja-selvamani',
+    name: 'Meri Roja Selvamani',
+    shortName: 'Roja',
+    aliases: ['Roja', 'Meri Roja'],
+    role: 'YSRCP MLA',
+    constituency: 'Nagari',
+    district: 'Tirupati',
+    handles: ['@merisroja']
+  },
+  {
+    id: 'kakani-govardhan',
+    name: 'Kakani Govardhan Reddy',
+    shortName: 'Kakani',
+    aliases: ['Kakani Govardhan', 'Kakani'],
+    role: 'YSRCP MLA',
+    constituency: 'Nellore Rural',
+    district: 'SPSR Nellore',
+    handles: []
+  },
+  {
+    id: 'peddireddy-ramachandra',
+    name: 'Peddireddy Ramachandra Reddy',
+    shortName: 'Peddireddy',
+    aliases: ['Peddireddy'],
+    role: 'YSRCP Senior Leader',
+    constituency: 'Punganur',
+    district: 'Chittoor',
+    handles: []
+  },
+  {
+    id: 'butta-renuka',
+    name: 'Butta Renuka',
+    shortName: 'Butta Renuka',
+    role: 'YSRCP MP',
+    constituency: null,
+    district: 'Nellore',
+    handles: []
+  },
+  {
+    id: 'sridhar-reddy-jafari',
+    name: 'Sridhar Reddy',
+    shortName: 'Sridhar Reddy',
+    role: 'YSRCP Leader',
+    constituency: null,
+    district: null,
+    handles: []
+  }
 ];
 
-const _BJP_LEADERS_RAW = [
-  { id: 'modi', name: 'Narendra Modi', shortName: 'Modi', role: 'Prime Minister', constituency: 'Varanasi', district: 'Varanasi', handles: ['@narendramodi'] },
-  { id: 'amit-shah', name: 'Amit Shah', shortName: 'Amit Shah', role: 'Union Home Minister', constituency: 'Gandhinagar', district: 'Gandhinagar', handles: ['@AmitShah'] },
-  { id: 'kishan-reddy', name: 'G. Kishan Reddy', shortName: 'Kishan Reddy', role: 'Union Minister / TG BJP Chief', constituency: 'Secunderabad', district: 'Hyderabad', handles: ['@kishanreddybjp'] },
-  { id: 'bandi-sanjay', name: 'Bandi Sanjay Kumar', shortName: 'Bandi Sanjay', role: 'Union MoS Home', constituency: 'Karimnagar', district: 'Karimnagar', handles: ['@bandisanjay_bjp'] },
-  { id: 'eatala-rajender', name: 'Eatala Rajender', shortName: 'Eatala', role: 'BJP Leader', constituency: 'Malkajgiri', district: 'Medchal-Malkajgiri', handles: ['@Eatala_Rajender'] }
-];
-
-const _AIMIM_LEADERS_RAW = [
-  { id: 'asaduddin-owaisi', name: 'Asaduddin Owaisi', shortName: 'Owaisi', role: 'AIMIM President / MP', constituency: 'Hyderabad', district: 'Hyderabad', handles: ['@asadowaisi'] },
-  { id: 'akbaruddin-owaisi', name: 'Akbaruddin Owaisi', shortName: 'Akbaruddin', role: 'AIMIM Floor Leader / MLA', constituency: 'Chandrayangutta', district: 'Hyderabad', handles: [] }
+const _INC_AP_LEADERS_RAW = [
+  {
+    id: 'ys-sharmila',
+    name: 'Y.S. Sharmila',
+    shortName: 'Y.S. Sharmila',
+    aliases: ['Sharmila', 'YS Sharmila'],
+    role: 'APCC President / MP',
+    constituency: null,
+    district: null,
+    handles: ['@realyssharmila']
+  }
 ];
 
 const OPPOSITION_PARTIES = [
-  { id: 'brs', name: 'BRS', full_name: 'Bharat Rashtra Samithi', alliance: 'BRS', leaders: tagLeaders(_BRS_LEADERS_RAW, 'BRS', 'opposition') },
-  { id: 'bjp', name: 'BJP', full_name: 'Bharatiya Janata Party', alliance: 'NDA', leaders: tagLeaders(_BJP_LEADERS_RAW, 'BJP', 'opposition') },
-  { id: 'aimim', name: 'AIMIM', full_name: 'All India Majlis-e-Ittehadul Muslimeen', alliance: 'AIMIM', leaders: tagLeaders(_AIMIM_LEADERS_RAW, 'AIMIM', 'opposition') }
+  {
+    id: 'ysrcp',
+    name: 'YSRCP',
+    full_name: 'YSR Congress Party',
+    alliance: 'YSRCP',
+    leaders: tagLeaders(_YSRCP_LEADERS_RAW, 'YSRCP', 'opposition')
+  },
+  {
+    id: 'inc_ap',
+    name: 'INC',
+    full_name: 'Indian National Congress (AP)',
+    alliance: 'INDIA',
+    leaders: tagLeaders(_INC_AP_LEADERS_RAW, 'INC', 'opposition')
+  }
 ];
 
 const OPPOSITION_LEADERS = OPPOSITION_PARTIES.flatMap((p) => p.leaders);
-
-// ─────────────────────────────────────────────────────────
-// UNIFIED LIST — used by personDetectionService
-// ─────────────────────────────────────────────────────────
 const ALL_LEADERS = [...OUR_LEADERS, ...OPPOSITION_LEADERS];
 
 module.exports = {
-  // Meta
   OUR_PARTY,
   OPPOSITION_PARTIES,
-  // Tagged collections
   CABINET_MINISTERS,
-  CONGRESS_MLAS,
   OUR_LEADERS,
   OPPOSITION_LEADERS,
   ALL_LEADERS,
-  // Helpers
   normalizeHandle
 };

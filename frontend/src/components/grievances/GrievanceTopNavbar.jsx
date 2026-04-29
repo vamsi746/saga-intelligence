@@ -14,6 +14,13 @@ import { cn } from '../../lib/utils';
 /*                  PLATFORM ICONS & COMPONENTS                   */
 /* ═══════════════════════════════════════════════════════════════ */
 
+// RSS Icon
+const RssIcon = ({ className }) => (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+        <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20C4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
+    </svg>
+);
+
 // X (Twitter) Logo
 const XLogo = ({ className }) => (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -61,6 +68,7 @@ export const GrievanceTopNavbar = ({
         { id: 'x', label: 'X', icon: XLogo, color: 'text-black' },
         { id: 'facebook', label: 'Facebook', icon: FacebookLogo, color: 'text-[#1877F2]' },
         { id: 'youtube', label: 'YouTube', icon: YouTubeLogo, color: 'text-[#FF0000]' },
+        { id: 'rss', label: 'RSS', icon: RssIcon, color: 'text-orange-500' },
     ];
 
     const selectedHandleData = sources.find(h => h.handle === selectedHandle || h.id === selectedHandle);
@@ -149,6 +157,7 @@ export const GrievanceTopNavbar = ({
                                                 onKeyDown={(e) => e.stopPropagation()}
                                                 placeholder="Search location..."
                                                 className="h-8 border-slate-200 bg-white pl-8 text-xs"
+                                                autoComplete="off"
                                             />
                                         </div>
                                     </div>
@@ -293,7 +302,7 @@ export const GrievanceTopNavbar = ({
                             </div>
                         )}
 
-                        {activePlatform !== 'whatsapp' && (
+                        {activePlatform !== 'whatsapp' && activePlatform !== 'rss' && (
                             <div className="flex-1 sm:flex-none">
                                 <Button
                                     variant="outline"

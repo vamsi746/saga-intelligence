@@ -443,8 +443,104 @@ const getUnifiedReportsAnalytics = async (req, res) => {
   }
 };
 
+// ─── Grievances / Posts Analytics ────────────────────────────────────────────
+const Grievance = require('../models/Grievance');
+
+const getPostsAnalytics = async (req, res) => {
+  try {
+    const { platform, dateFrom, dateTo, sentiment, party } = req.query;
+
+    const match = {};
+    if (platform && platform !== 'all') match.platform = platform;
+    if (sentiment && sentiment !== 'all') match['analysis.sentiment'] = sentiment;
+    if (party && party !== 'all') match['analysis.target_party'] = party;
+
+    if (dateFrom || dateTo) {
+      match.post_date = {};
+      if (dateFrom) match.post_date.$gte = parseDateParam(dateFrom);
+      if (dateTo) match.post_date.$lte = parseDateParam(dateTo, { end: true });
+    }
+
+    const [
+      total,
+      byPlatform,
+      bySentiment,
+      byRiskLevel,
+      byWorkflowStatus,
+      topSenders,
+      byParty,
+      byLocation,
+      byCategory,
+      byDate,
+      byKeyword,
+    ] = await Promise.all([
+      Grievance.countDocuments(match),
+      Grievance.aggregate([{ $match: match }, { $group: { _id: '$platform', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Grievance.aggregate([{ $match: match }, { $group: { _id: '$analysis.sentiment', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Grievance.aggregate([{ $match: match }, { $group: { _id: '$analysis.risk_level', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Grievance.aggregate([{ $match: match }, { $group: { _id: '$workflow_status', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      Grievance.aggregate([
+        { $match: match },
+        { $group: { _id: '$posted_by.handle', display_name: { $first: '$posted_by.display_name' }, count: { $sum: 1 }, platform: { $first: '$platform' } } },
+        { $sort: { count: -1 } },
+        { $limit: 25 }
+      ]),
+      Grievance.aggregate([
+        { $match: match },
+        { $group: { _id: '$analysis.target_party', count: { $sum: 1 } } },
+        { $match: { _id: { $nin: [null, ''] } } },
+        { $sort: { count: -1 } }
+      ]),
+      Grievance.aggregate([
+        { $match: match },
+        { $group: { _id: '$detected_location.city', district: { $first: '$detected_location.district' }, count: { $sum: 1 } } },
+        { $match: { _id: { $nin: [null, ''] } } },
+        { $sort: { count: -1 } },
+        { $limit: 20 }
+      ]),
+      Grievance.aggregate([
+        { $match: match },
+        { $group: { _id: '$analysis.category', count: { $sum: 1 } } },
+        { $match: { _id: { $nin: [null, ''] } } },
+        { $sort: { count: -1 } }
+      ]),
+      Grievance.aggregate([
+        { $match: { ...match, post_date: { ...(match.post_date || {}), $gte: match.post_date?.$gte || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$post_date' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Grievance.aggregate([
+        { $match: match },
+        { $unwind: { path: '$analysis.triggered_keywords', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: '$analysis.triggered_keywords', count: { $sum: 1 } } },
+        { $match: { _id: { $nin: [null, ''] } } },
+        { $sort: { count: -1 } },
+        { $limit: 15 }
+      ]),
+    ]);
+
+    res.json({
+      total,
+      byPlatform: byPlatform.map(x => ({ platform: x._id || 'unknown', count: x.count })),
+      bySentiment: bySentiment.map(x => ({ sentiment: x._id || 'unknown', count: x.count })),
+      byRiskLevel: byRiskLevel.map(x => ({ risk: x._id || 'unknown', count: x.count })),
+      byWorkflowStatus: byWorkflowStatus.map(x => ({ status: x._id || 'unknown', count: x.count })),
+      topSenders: topSenders.map(x => ({ handle: x._id, display_name: x.display_name, count: x.count, platform: x.platform })),
+      byParty: byParty.map(x => ({ party: x._id, count: x.count })),
+      byLocation: byLocation.map(x => ({ city: x._id, district: x.district, count: x.count })),
+      byCategory: byCategory.map(x => ({ category: x._id, count: x.count })),
+      byDate: byDate.map(x => ({ date: x._id, count: x.count })),
+      byKeyword: byKeyword.map(x => ({ keyword: x._id, count: x.count })),
+    });
+  } catch (err) {
+    console.error('[Analytics] Posts stats error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   getAnalyticsOverview,
   getTrends,
-  getUnifiedReportsAnalytics
+  getUnifiedReportsAnalytics,
+  getPostsAnalytics
 };

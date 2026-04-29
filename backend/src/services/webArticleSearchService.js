@@ -63,7 +63,6 @@ const searchPublicWebArticles = async ({ query, limit }) => {
     const link = normalizeWhitespace($(element).find('link').first().text() || '');
     const source = normalizeWhitespace($(element).find('source').first().text() || 'Unknown Source');
     const descriptionRaw = $(element).find('description').first().text() || '';
-    const summary = stripHtml(descriptionRaw).slice(0, 500);
     const publishedAt = $(element).find('pubDate').first().text() || new Date().toUTCString();
 
     if (!title || !link) return undefined;
@@ -72,12 +71,34 @@ const searchPublicWebArticles = async ({ query, limit }) => {
     if (seen.has(dedupeKey)) return undefined;
     seen.add(dedupeKey);
 
+    // Extract summary — skip if it's just the title repeated (Google News pattern)
+    const rawSummary = stripHtml(descriptionRaw).slice(0, 500);
+    const summaryIsTitle = rawSummary.toLowerCase().startsWith(title.toLowerCase().slice(0, 40));
+    const summary = (!summaryIsTitle && rawSummary.length > 60) ? rawSummary : '';
+
+    // Extract image from RSS feed tags (no scraping needed)
+    // Tries: <media:content url="...">, <enclosure url="..." type="image/...">, <media:thumbnail url="...">
+    const mediaContent = $(element).find('media\\:content, content').first();
+    const enclosure = $(element).find('enclosure').first();
+    const mediaThumbnail = $(element).find('media\\:thumbnail, thumbnail').first();
+    let rssImage =
+      mediaContent.attr('url') ||
+      (enclosure.attr('type') || '').startsWith('image/') ? enclosure.attr('url') : null ||
+      mediaThumbnail.attr('url') ||
+      null;
+    // Also try og:image inside description HTML
+    if (!rssImage && descriptionRaw.includes('<img')) {
+      const imgMatch = descriptionRaw.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (imgMatch) rssImage = imgMatch[1];
+    }
+
     const article = {
       id: `pub-live-${index + 1}`,
       title,
       source,
       url: link,
-      summary: summary || 'No summary available for this result.',
+      summary: summary || '',
+      image: rssImage || null,
       publishedAt: new Date(publishedAt).toISOString(),
       tags: queryWords.slice(0, 5),
       relevanceScore: 0
